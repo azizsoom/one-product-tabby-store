@@ -1,0 +1,83 @@
+import { ShoppingBag, ShieldCheck, Truck, BadgePercent } from 'lucide-react';
+import { calculateOrder } from '@/lib/pricing';
+
+const product = {
+  name: 'منتج المتجر الرئيسي',
+  subtitle: 'منتج واحد بصفحة شراء مختصرة وحسابات ضريبية دقيقة',
+  priceBeforeVat: 100,
+  image: '/product-placeholder.svg',
+};
+
+const preview = calculateOrder({
+  unitPriceBeforeVat: product.priceBeforeVat,
+  quantity: 1,
+  discount: { type: 'percentage', value: 10 },
+});
+
+export default function HomePage() {
+  return (
+    <main className="min-h-screen bg-stone-50 text-stone-950" dir="rtl">
+      <section className="mx-auto grid max-w-6xl gap-10 px-5 py-10 md:grid-cols-2 md:py-16">
+        <div className="flex items-center justify-center rounded-[2rem] bg-white p-8 shadow-sm ring-1 ring-stone-200">
+          <img src={product.image} alt={product.name} className="h-80 w-80 object-contain" />
+        </div>
+
+        <div className="flex flex-col justify-center">
+          <div className="mb-4 inline-flex w-fit items-center gap-2 rounded-full bg-emerald-100 px-4 py-2 text-sm font-semibold text-emerald-800">
+            <ShieldCheck size={18} /> جاهز لحساب ضريبة 15% وربط تابي
+          </div>
+
+          <h1 className="text-4xl font-black leading-tight md:text-5xl">{product.name}</h1>
+          <p className="mt-4 text-lg leading-8 text-stone-600">{product.subtitle}</p>
+
+          <div className="mt-8 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-stone-200">
+            <div className="mb-5 flex items-center justify-between border-b border-stone-100 pb-4">
+              <span className="text-stone-500">السعر قبل الضريبة</span>
+              <strong className="text-2xl">{product.priceBeforeVat.toFixed(2)} ريال</strong>
+            </div>
+
+            <div className="space-y-3 text-sm">
+              <Row label="خصم تجريبي 10%" value={`-${preview.discountAmount.toFixed(2)} ريال`} />
+              <Row label="الصافي الخاضع للضريبة" value={`${preview.taxableAmount.toFixed(2)} ريال`} />
+              <Row label="ضريبة القيمة المضافة 15%" value={`${preview.vatAmount.toFixed(2)} ريال`} />
+              <div className="mt-4 flex items-center justify-between rounded-2xl bg-stone-950 px-5 py-4 text-white">
+                <span>الإجمالي للدفع عبر تابي</span>
+                <strong className="text-2xl">{preview.totalAmount.toFixed(2)} ريال</strong>
+              </div>
+            </div>
+
+            <form action="/checkout" className="mt-6">
+              <button className="w-full rounded-2xl bg-emerald-600 px-6 py-4 text-lg font-bold text-white shadow-sm transition hover:bg-emerald-700">
+                شراء الآن عبر تابي
+              </button>
+            </form>
+          </div>
+
+          <div className="mt-6 grid grid-cols-3 gap-3 text-center text-sm text-stone-600">
+            <Feature icon={<Truck size={20} />} text="شحن واضح" />
+            <Feature icon={<BadgePercent size={20} />} text="كود خصم" />
+            <Feature icon={<ShoppingBag size={20} />} text="طلب مختصر" />
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-stone-500">{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function Feature({ icon, text }: { icon: React.ReactNode; text: string }) {
+  return (
+    <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-stone-200">
+      <div className="mx-auto mb-2 flex w-fit text-emerald-700">{icon}</div>
+      {text}
+    </div>
+  );
+}
