@@ -1,17 +1,17 @@
+import type { ReactNode } from 'react';
 import { ShoppingBag, ShieldCheck, Truck, BadgePercent } from 'lucide-react';
-import { calculateOrder } from '../lib/pricing';
 
 const product = {
   name: 'منتج المتجر الرئيسي',
   subtitle: 'منتج واحد بصفحة شراء مختصرة وحسابات ضريبية دقيقة',
   priceBeforeVat: 100,
-  image: '/product-placeholder.svg',
 };
 
 const preview = calculateOrder({
   unitPriceBeforeVat: product.priceBeforeVat,
   quantity: 1,
-  discount: { type: 'percentage', value: 10 },
+  discountType: 'percentage',
+  discountValue: 10,
 });
 
 export default function HomePage() {
@@ -66,6 +66,29 @@ export default function HomePage() {
   );
 }
 
+function calculateOrder(input: {
+  unitPriceBeforeVat: number;
+  quantity: number;
+  discountType?: 'percentage' | 'fixed';
+  discountValue?: number;
+}) {
+  const vatRate = 0.15;
+  const subtotalBeforeDiscount = roundMoney(input.unitPriceBeforeVat * input.quantity);
+  const rawDiscount = input.discountType === 'percentage'
+    ? subtotalBeforeDiscount * ((input.discountValue || 0) / 100)
+    : (input.discountValue || 0);
+  const discountAmount = roundMoney(Math.min(subtotalBeforeDiscount, Math.max(0, rawDiscount)));
+  const taxableAmount = roundMoney(subtotalBeforeDiscount - discountAmount);
+  const vatAmount = roundMoney(taxableAmount * vatRate);
+  const totalAmount = roundMoney(taxableAmount + vatAmount);
+
+  return { subtotalBeforeDiscount, discountAmount, taxableAmount, vatRate, vatAmount, totalAmount };
+}
+
+function roundMoney(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between">
@@ -75,7 +98,7 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Feature({ icon, text }: { icon: React.ReactNode; text: string }) {
+function Feature({ icon, text }: { icon: ReactNode; text: string }) {
   return (
     <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-stone-200">
       <div className="mx-auto mb-2 flex w-fit text-emerald-700">{icon}</div>
