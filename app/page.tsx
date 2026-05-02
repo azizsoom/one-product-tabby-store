@@ -1,5 +1,5 @@
 import { ShoppingBag, ShieldCheck, Truck, BadgePercent } from 'lucide-react';
-import { calculateOrder } from '@/lib/pricing';
+import { calculateOrder } from '../lib/pricing';
 
 const product = {
   name: 'منتج المتجر الرئيسي',
