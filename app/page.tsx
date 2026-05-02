@@ -1,5 +1,9 @@
+'use client';
+
 import type { ReactNode } from 'react';
+import { useState } from 'react';
 import { ShoppingBag, ShieldCheck, Truck, BadgePercent } from 'lucide-react';
+import { db } from '../lib/db';
 
 const product = {
   name: 'مطارة الكريديس',
@@ -17,6 +21,38 @@ const preview = calculateOrder({
 });
 
 export default function HomePage() {
+  const [customerName, setCustomerName] = useState('');
+  const [customerMobile, setCustomerMobile] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+
+  async function createTestOrder() {
+    setSaving(true);
+    setMessage('');
+
+    const { error } = await db.from('orders').insert({
+      customer_name: customerName || 'عميل تجريبي',
+      customer_mobile: customerMobile || null,
+      product_name: product.name,
+      quantity: 1,
+      unit_price_before_vat: product.priceBeforeVat,
+      subtotal_before_discount: preview.subtotalBeforeDiscount,
+      discount_code: 'TEST10',
+      discount_amount: preview.discountAmount,
+      taxable_amount: preview.taxableAmount,
+      vat_rate: 0.15,
+      vat_amount: preview.vatAmount,
+      shipping_amount: preview.shippingAmount,
+      total_amount: preview.totalAmount,
+      payment_method: 'tabby',
+      payment_status: 'pending',
+      order_status: 'new',
+    });
+
+    setSaving(false);
+    setMessage(error ? 'فشل إنشاء الطلب: ' + error.message : 'تم إنشاء طلب تجريبي. افتح لوحة الطلبات للتأكد.');
+  }
+
   return (
     <main className="min-h-screen bg-stone-50 text-stone-950" dir="rtl">
       <section className="mx-auto grid max-w-6xl gap-10 px-5 py-10 md:grid-cols-2 md:py-16">
@@ -51,11 +87,16 @@ export default function HomePage() {
               </div>
             </div>
 
-            <form action="/checkout" className="mt-6">
-              <button className="w-full rounded-2xl bg-emerald-600 px-6 py-4 text-lg font-bold text-white shadow-sm transition hover:bg-emerald-700">
-                شراء الآن عبر تابي
-              </button>
-            </form>
+            <div className="mt-6 grid gap-3 md:grid-cols-2">
+              <input className="input" placeholder="اسم العميل للتجربة" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+              <input className="input" placeholder="رقم الجوال للتجربة" value={customerMobile} onChange={(e) => setCustomerMobile(e.target.value)} />
+            </div>
+
+            {message ? <p className="mt-4 rounded-2xl bg-stone-100 p-3 text-sm">{message}</p> : null}
+
+            <button onClick={createTestOrder} disabled={saving} className="mt-6 w-full rounded-2xl bg-emerald-600 px-6 py-4 text-lg font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50">
+              {saving ? 'جاري إنشاء الطلب...' : 'إنشاء طلب تجريبي قبل ربط تابي'}
+            </button>
           </div>
 
           <div className="mt-6 grid grid-cols-3 gap-3 text-center text-sm text-stone-600">
