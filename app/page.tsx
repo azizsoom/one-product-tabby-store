@@ -2,9 +2,10 @@ import type { ReactNode } from 'react';
 import { ShoppingBag, ShieldCheck, Truck, BadgePercent } from 'lucide-react';
 
 const product = {
-  name: 'منتج المتجر الرئيسي',
-  subtitle: 'منتج واحد بصفحة شراء مختصرة وحسابات ضريبية دقيقة',
+  name: 'مطارة الكريديس',
+  subtitle: 'مطارة ماء عالية الجودة بصفحة شراء مختصرة وحسابات ضريبية دقيقة',
   priceBeforeVat: 100,
+  shippingAmount: 0,
 };
 
 const preview = calculateOrder({
@@ -12,6 +13,7 @@ const preview = calculateOrder({
   quantity: 1,
   discountType: 'percentage',
   discountValue: 10,
+  shippingAmount: product.shippingAmount,
 });
 
 export default function HomePage() {
@@ -20,7 +22,7 @@ export default function HomePage() {
       <section className="mx-auto grid max-w-6xl gap-10 px-5 py-10 md:grid-cols-2 md:py-16">
         <div className="flex items-center justify-center rounded-[2rem] bg-white p-8 shadow-sm ring-1 ring-stone-200">
           <div className="flex h-80 w-80 items-center justify-center rounded-3xl bg-stone-100 text-center text-stone-500">
-            صورة المنتج
+            صورة مطارة الكريديس
           </div>
         </div>
 
@@ -42,6 +44,7 @@ export default function HomePage() {
               <Row label="خصم تجريبي 10%" value={`-${preview.discountAmount.toFixed(2)} ريال`} />
               <Row label="الصافي الخاضع للضريبة" value={`${preview.taxableAmount.toFixed(2)} ريال`} />
               <Row label="ضريبة القيمة المضافة 15%" value={`${preview.vatAmount.toFixed(2)} ريال`} />
+              <Row label="الشحن" value="مجاني" />
               <div className="mt-4 flex items-center justify-between rounded-2xl bg-stone-950 px-5 py-4 text-white">
                 <span>الإجمالي للدفع عبر تابي</span>
                 <strong className="text-2xl">{preview.totalAmount.toFixed(2)} ريال</strong>
@@ -56,7 +59,7 @@ export default function HomePage() {
           </div>
 
           <div className="mt-6 grid grid-cols-3 gap-3 text-center text-sm text-stone-600">
-            <Feature icon={<Truck size={20} />} text="شحن واضح" />
+            <Feature icon={<Truck size={20} />} text="شحن مجاني" />
             <Feature icon={<BadgePercent size={20} />} text="كود خصم" />
             <Feature icon={<ShoppingBag size={20} />} text="طلب مختصر" />
           </div>
@@ -71,6 +74,7 @@ function calculateOrder(input: {
   quantity: number;
   discountType?: 'percentage' | 'fixed';
   discountValue?: number;
+  shippingAmount?: number;
 }) {
   const vatRate = 0.15;
   const subtotalBeforeDiscount = roundMoney(input.unitPriceBeforeVat * input.quantity);
@@ -80,9 +84,10 @@ function calculateOrder(input: {
   const discountAmount = roundMoney(Math.min(subtotalBeforeDiscount, Math.max(0, rawDiscount)));
   const taxableAmount = roundMoney(subtotalBeforeDiscount - discountAmount);
   const vatAmount = roundMoney(taxableAmount * vatRate);
-  const totalAmount = roundMoney(taxableAmount + vatAmount);
+  const shippingAmount = roundMoney(Math.max(0, input.shippingAmount || 0));
+  const totalAmount = roundMoney(taxableAmount + vatAmount + shippingAmount);
 
-  return { subtotalBeforeDiscount, discountAmount, taxableAmount, vatRate, vatAmount, totalAmount };
+  return { subtotalBeforeDiscount, discountAmount, taxableAmount, vatRate, vatAmount, shippingAmount, totalAmount };
 }
 
 function roundMoney(value: number) {
