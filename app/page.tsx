@@ -19,7 +19,9 @@ export default function HomePage() {
     <main className="min-h-screen bg-stone-50 text-stone-950" dir="rtl">
       <section className="mx-auto grid max-w-6xl gap-10 px-5 py-10 md:grid-cols-2 md:py-16">
         <div className="flex items-center justify-center rounded-[2rem] bg-white p-8 shadow-sm ring-1 ring-stone-200">
-          <img src={product.image} alt={product.name} className="h-80 w-80 object-contain" />
+          <div className="flex h-80 w-80 items-center justify-center rounded-3xl bg-stone-100 text-center text-stone-500">
+            صورة المنتج
+          </div>
         </div>
 
         <div className="flex flex-col justify-center">
