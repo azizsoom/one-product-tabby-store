@@ -4,4 +4,20 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; font-family: Arial, sans-serif; }
-button, input { font: inherit; }
+button, input, textarea { font: inherit; }
+
+.input {
+  width: 100%;
+  border: 1px solid #d6d3d1;
+  border-radius: 16px;
+  background: #ffffff;
+  padding: 14px 16px;
+  color: #1c1917;
+  outline: none;
+  direction: rtl;
+}
+
+.input:focus {
+  border-color: #059669;
+  box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.14);
+}
