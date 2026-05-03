@@ -60,9 +60,15 @@ export default function HomePage() {
     setSaving(true);
     setMessage('');
 
-    if (!customerName.trim() || !customerMobile.trim()) {
+    if (!customerName.trim() || !customerMobile.trim() || !customerEmail.trim()) {
       setSaving(false);
-      setMessage('فضلاً أدخل الاسم ورقم الجوال قبل المتابعة للدفع.');
+      setMessage('فضلاً أدخل الاسم ورقم الجوال والبريد الإلكتروني قبل المتابعة للدفع.');
+      return;
+    }
+
+    if (!isValidEmail(customerEmail)) {
+      setSaving(false);
+      setMessage('صيغة البريد الإلكتروني غير صحيحة. مثال: name@example.com');
       return;
     }
 
@@ -72,7 +78,7 @@ export default function HomePage() {
       body: JSON.stringify({
         customerName,
         customerMobile,
-        customerEmail: customerEmail || 'customer@example.com',
+        customerEmail,
       }),
     });
 
@@ -136,7 +142,7 @@ export default function HomePage() {
             <div className="mt-6 grid gap-3 md:grid-cols-3">
               <input className="input" placeholder="اسم العميل" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
               <input className="input" placeholder="رقم الجوال" value={customerMobile} onChange={(e) => setCustomerMobile(e.target.value)} />
-              <input className="input" placeholder="البريد الإلكتروني اختياري" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} />
+              <input className="input" placeholder="البريد الإلكتروني" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} />
             </div>
 
             {message ? <p className="mt-4 rounded-2xl bg-stone-100 p-3 text-sm">{message}</p> : null}
@@ -194,6 +200,10 @@ function calculateOrder(input: {
 
 function roundMoney(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function isValidEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 function Row({ label, value }: { label: string; value: string }) {
