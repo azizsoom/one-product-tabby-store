@@ -18,6 +18,7 @@ export default function AdminProductPage() {
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
 
   useEffect(() => {
@@ -33,6 +34,45 @@ export default function AdminProductPage() {
       setProduct(data);
     }
     setLoading(false);
+  }
+
+  async function uploadImage(file: File) {
+    if (!product || !file) return;
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      setMessage('صيغة الصورة غير مدعومة. استخدم JPG أو PNG أو WEBP.');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setMessage('حجم الصورة كبير. الحد الأقصى 5MB.');
+      return;
+    }
+
+    setUploading(true);
+    setMessage('');
+
+    const extension = file.name.split('.').pop() || 'webp';
+    const filePath = `products/${product.id}-${Date.now()}.${extension}`;
+
+    const { error } = await db.storage
+      .from('product-images')
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: true,
+      });
+
+    if (error) {
+      setUploading(false);
+      setMessage('فشل رفع الصورة: ' + error.message);
+      return;
+    }
+
+    const { data } = db.storage.from('product-images').getPublicUrl(filePath);
+    setProduct({ ...product, image_url: data.publicUrl });
+    setUploading(false);
+    setMessage('تم رفع الصورة. اضغط حفظ التعديلات لاعتمادها.');
   }
 
   async function saveProduct() {
@@ -90,9 +130,15 @@ export default function AdminProductPage() {
             </Label>
           </div>
 
+          <Label title="رفع صورة المنتج من الجهاز">
+            <input className="input" type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => e.target.files?.[0] && uploadImage(e.target.files[0])} />
+          </Label>
+
           <Label title="رابط صورة المنتج">
             <input className="input" value={product.image_url || ''} placeholder="https://..." onChange={(e) => setProduct({ ...product, image_url: e.target.value })} />
           </Label>
+
+          {uploading ? <p className="mt-4 rounded-2xl bg-stone-100 p-3 text-sm">جاري رفع الصورة...</p> : null}
 
           {product.image_url ? (
             <div className="mt-4 rounded-2xl bg-stone-100 p-4">
@@ -107,7 +153,7 @@ export default function AdminProductPage() {
 
           {message ? <p className="mt-4 rounded-2xl bg-stone-100 p-3 text-sm">{message}</p> : null}
 
-          <button onClick={saveProduct} disabled={saving} className="mt-6 w-full rounded-2xl bg-emerald-600 px-6 py-4 font-bold text-white hover:bg-emerald-700 disabled:opacity-50">
+          <button onClick={saveProduct} disabled={saving || uploading} className="mt-6 w-full rounded-2xl bg-emerald-600 px-6 py-4 font-bold text-white hover:bg-emerald-700 disabled:opacity-50">
             {saving ? 'جاري الحفظ...' : 'حفظ التعديلات'}
           </button>
         </div>
