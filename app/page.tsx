@@ -1,41 +1,70 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ShoppingBag, ShieldCheck, Truck, BadgePercent } from 'lucide-react';
 import { db } from '../lib/db';
 
-const product = {
-  name: 'مطارة الكريديس',
-  subtitle: 'مطارة ماء عالية الجودة بصفحة شراء مختصرة وحسابات ضريبية دقيقة',
-  priceBeforeVat: 100,
-  shippingAmount: 0,
+type Product = {
+  id: string;
+  name: string;
+  description: string | null;
+  price_before_vat: number;
+  shipping_amount: number;
+  image_url: string | null;
+  is_active: boolean;
 };
 
-const preview = calculateOrder({
-  unitPriceBeforeVat: product.priceBeforeVat,
-  quantity: 1,
-  discountType: 'percentage',
-  discountValue: 10,
-  shippingAmount: product.shippingAmount,
-});
-
 export default function HomePage() {
+  const [product, setProduct] = useState<Product | null>(null);
+  const [loading, setLoading] = useState(true);
   const [customerName, setCustomerName] = useState('');
   const [customerMobile, setCustomerMobile] = useState('');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
+  useEffect(() => {
+    loadProduct();
+  }, []);
+
+  async function loadProduct() {
+    setLoading(true);
+    const { data, error } = await db
+      .from('products')
+      .select('*')
+      .eq('is_active', true)
+      .limit(1)
+      .single();
+
+    if (!error && data) {
+      setProduct(data);
+    }
+    setLoading(false);
+  }
+
+  const preview = useMemo(() => {
+    if (!product) return null;
+    return calculateOrder({
+      unitPriceBeforeVat: Number(product.price_before_vat || 0),
+      quantity: 1,
+      discountType: 'percentage',
+      discountValue: 10,
+      shippingAmount: Number(product.shipping_amount || 0),
+    });
+  }, [product]);
+
   async function createTestOrder() {
+    if (!product || !preview) return;
     setSaving(true);
     setMessage('');
 
     const { error } = await db.from('orders').insert({
       customer_name: customerName || 'عميل تجريبي',
       customer_mobile: customerMobile || null,
+      product_id: product.id,
       product_name: product.name,
       quantity: 1,
-      unit_price_before_vat: product.priceBeforeVat,
+      unit_price_before_vat: Number(product.price_before_vat || 0),
       subtotal_before_discount: preview.subtotalBeforeDiscount,
       discount_code: 'TEST10',
       discount_amount: preview.discountAmount,
@@ -53,13 +82,25 @@ export default function HomePage() {
     setMessage(error ? 'فشل إنشاء الطلب: ' + error.message : 'تم إنشاء طلب تجريبي. افتح لوحة الطلبات للتأكد.');
   }
 
+  if (loading) {
+    return <main className="min-h-screen bg-stone-50 p-6 text-stone-950" dir="rtl">جاري تحميل المنتج...</main>;
+  }
+
+  if (!product || !preview) {
+    return <main className="min-h-screen bg-stone-50 p-6 text-stone-950" dir="rtl">لا يوجد منتج مفعل.</main>;
+  }
+
   return (
     <main className="min-h-screen bg-stone-50 text-stone-950" dir="rtl">
       <section className="mx-auto grid max-w-6xl gap-10 px-5 py-10 md:grid-cols-2 md:py-16">
         <div className="flex items-center justify-center rounded-[2rem] bg-white p-8 shadow-sm ring-1 ring-stone-200">
-          <div className="flex h-80 w-80 items-center justify-center rounded-3xl bg-stone-100 text-center text-stone-500">
-            صورة مطارة الكريديس
-          </div>
+          {product.image_url ? (
+            <img src={product.image_url} alt={product.name} className="max-h-96 w-full object-contain" />
+          ) : (
+            <div className="flex h-80 w-80 items-center justify-center rounded-3xl bg-stone-100 text-center text-stone-500">
+              صورة {product.name}
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col justify-center">
@@ -68,19 +109,19 @@ export default function HomePage() {
           </div>
 
           <h1 className="text-4xl font-black leading-tight md:text-5xl">{product.name}</h1>
-          <p className="mt-4 text-lg leading-8 text-stone-600">{product.subtitle}</p>
+          <p className="mt-4 text-lg leading-8 text-stone-600">{product.description || 'منتج بصفحة شراء مختصرة وحسابات ضريبية دقيقة'}</p>
 
           <div className="mt-8 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-stone-200">
             <div className="mb-5 flex items-center justify-between border-b border-stone-100 pb-4">
               <span className="text-stone-500">السعر قبل الضريبة</span>
-              <strong className="text-2xl">{product.priceBeforeVat.toFixed(2)} ريال</strong>
+              <strong className="text-2xl">{Number(product.price_before_vat || 0).toFixed(2)} ريال</strong>
             </div>
 
             <div className="space-y-3 text-sm">
               <Row label="خصم تجريبي 10%" value={`-${preview.discountAmount.toFixed(2)} ريال`} />
               <Row label="الصافي الخاضع للضريبة" value={`${preview.taxableAmount.toFixed(2)} ريال`} />
               <Row label="ضريبة القيمة المضافة 15%" value={`${preview.vatAmount.toFixed(2)} ريال`} />
-              <Row label="الشحن" value="مجاني" />
+              <Row label="الشحن" value={preview.shippingAmount === 0 ? 'مجاني' : `${preview.shippingAmount.toFixed(2)} ريال`} />
               <div className="mt-4 flex items-center justify-between rounded-2xl bg-stone-950 px-5 py-4 text-white">
                 <span>الإجمالي للدفع عبر تابي</span>
                 <strong className="text-2xl">{preview.totalAmount.toFixed(2)} ريال</strong>
@@ -100,7 +141,7 @@ export default function HomePage() {
           </div>
 
           <div className="mt-6 grid grid-cols-3 gap-3 text-center text-sm text-stone-600">
-            <Feature icon={<Truck size={20} />} text="شحن مجاني" />
+            <Feature icon={<Truck size={20} />} text={preview.shippingAmount === 0 ? 'شحن مجاني' : 'شحن محسوب'} />
             <Feature icon={<BadgePercent size={20} />} text="كود خصم" />
             <Feature icon={<ShoppingBag size={20} />} text="طلب مختصر" />
           </div>
