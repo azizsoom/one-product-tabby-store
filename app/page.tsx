@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { ShoppingBag, ShieldCheck, Truck, BadgePercent } from 'lucide-react';
 import { db } from '../lib/db';
@@ -147,6 +148,20 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      <footer className="mx-auto max-w-6xl px-5 pb-10 text-center text-sm text-stone-600">
+        <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-stone-200">
+          <p className="font-bold text-stone-900">شركة المطارة</p>
+          <p className="mt-1">الرياض - الرقم الضريبي: 300339747477747</p>
+          <nav className="mt-4 flex flex-wrap justify-center gap-3">
+            <Link className="hover:text-emerald-700" href="/shipping-policy">سياسة الشحن</Link>
+            <Link className="hover:text-emerald-700" href="/refund-policy">الاسترجاع والاستبدال</Link>
+            <Link className="hover:text-emerald-700" href="/terms">الشروط والأحكام</Link>
+            <Link className="hover:text-emerald-700" href="/privacy">سياسة الخصوصية</Link>
+            <Link className="hover:text-emerald-700" href="/contact">تواصل معنا</Link>
+          </nav>
+        </div>
+      </footer>
     </main>
   );
 }
