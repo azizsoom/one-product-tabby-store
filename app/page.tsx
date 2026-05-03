@@ -21,6 +21,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [customerName, setCustomerName] = useState('');
   const [customerMobile, setCustomerMobile] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -54,33 +55,36 @@ export default function HomePage() {
     });
   }, [product]);
 
-  async function createTestOrder() {
+  async function startTabbyCheckout() {
     if (!product || !preview) return;
     setSaving(true);
     setMessage('');
 
-    const { error } = await db.from('orders').insert({
-      customer_name: customerName || 'عميل تجريبي',
-      customer_mobile: customerMobile || null,
-      product_id: product.id,
-      product_name: product.name,
-      quantity: 1,
-      unit_price_before_vat: Number(product.price_before_vat || 0),
-      subtotal_before_discount: preview.subtotalBeforeDiscount,
-      discount_code: 'TEST10',
-      discount_amount: preview.discountAmount,
-      taxable_amount: preview.taxableAmount,
-      vat_rate: 0.15,
-      vat_amount: preview.vatAmount,
-      shipping_amount: preview.shippingAmount,
-      total_amount: preview.totalAmount,
-      payment_method: 'tabby',
-      payment_status: 'pending',
-      order_status: 'new',
+    if (!customerName.trim() || !customerMobile.trim()) {
+      setSaving(false);
+      setMessage('فضلاً أدخل الاسم ورقم الجوال قبل المتابعة للدفع.');
+      return;
+    }
+
+    const response = await fetch('/api/checkout/tabby', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        customerName,
+        customerMobile,
+        customerEmail: customerEmail || 'customer@example.com',
+      }),
     });
 
+    const data = await response.json().catch(() => ({}));
     setSaving(false);
-    setMessage(error ? 'فشل إنشاء الطلب: ' + error.message : 'تم إنشاء طلب تجريبي. افتح لوحة الطلبات للتأكد.');
+
+    if (!response.ok || !data.webUrl) {
+      setMessage('تعذر إنشاء دفع تابي: ' + (data.error || data.details?.message || 'خطأ غير معروف'));
+      return;
+    }
+
+    window.location.href = data.webUrl;
   }
 
   if (loading) {
@@ -129,15 +133,16 @@ export default function HomePage() {
               </div>
             </div>
 
-            <div className="mt-6 grid gap-3 md:grid-cols-2">
-              <input className="input" placeholder="اسم العميل للتجربة" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
-              <input className="input" placeholder="رقم الجوال للتجربة" value={customerMobile} onChange={(e) => setCustomerMobile(e.target.value)} />
+            <div className="mt-6 grid gap-3 md:grid-cols-3">
+              <input className="input" placeholder="اسم العميل" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+              <input className="input" placeholder="رقم الجوال" value={customerMobile} onChange={(e) => setCustomerMobile(e.target.value)} />
+              <input className="input" placeholder="البريد الإلكتروني اختياري" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} />
             </div>
 
             {message ? <p className="mt-4 rounded-2xl bg-stone-100 p-3 text-sm">{message}</p> : null}
 
-            <button onClick={createTestOrder} disabled={saving} className="mt-6 w-full rounded-2xl bg-emerald-600 px-6 py-4 text-lg font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50">
-              {saving ? 'جاري إنشاء الطلب...' : 'إنشاء طلب تجريبي قبل ربط تابي'}
+            <button onClick={startTabbyCheckout} disabled={saving} className="mt-6 w-full rounded-2xl bg-emerald-600 px-6 py-4 text-lg font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50">
+              {saving ? 'جاري تحويلك إلى تابي...' : 'الدفع عبر تابي'}
             </button>
           </div>
 
