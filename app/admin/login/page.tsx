@@ -1,12 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 
 export default function AdminLoginPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const next = searchParams.get('next') || '/admin';
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
@@ -29,6 +27,8 @@ export default function AdminLoginPage() {
       return;
     }
 
+    const params = new URLSearchParams(window.location.search);
+    const next = params.get('next') || '/admin';
     router.push(next);
     router.refresh();
   }
