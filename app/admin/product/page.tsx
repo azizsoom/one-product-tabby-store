@@ -10,6 +10,7 @@ type Product = {
   description: string | null;
   price_before_vat: number;
   shipping_amount: number;
+  stock_quantity: number;
   image_url: string | null;
   is_active: boolean;
 };
@@ -31,7 +32,7 @@ export default function AdminProductPage() {
     if (error) {
       setMessage('تعذر تحميل المنتج: ' + error.message);
     } else {
-      setProduct(data);
+      setProduct({ ...data, stock_quantity: Number(data.stock_quantity ?? 0) });
     }
     setLoading(false);
   }
@@ -87,6 +88,7 @@ export default function AdminProductPage() {
         description: product.description,
         price_before_vat: Number(product.price_before_vat || 0),
         shipping_amount: Number(product.shipping_amount || 0),
+        stock_quantity: Math.max(0, Number(product.stock_quantity || 0)),
         image_url: product.image_url,
         is_active: product.is_active,
         updated_at: new Date().toISOString(),
@@ -120,13 +122,17 @@ export default function AdminProductPage() {
             <textarea className="input min-h-28" value={product.description || ''} onChange={(e) => setProduct({ ...product, description: e.target.value })} />
           </Label>
 
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-3">
             <Label title="السعر قبل الضريبة">
               <input className="input" type="number" step="0.01" value={product.price_before_vat} onChange={(e) => setProduct({ ...product, price_before_vat: Number(e.target.value) })} />
             </Label>
 
             <Label title="قيمة الشحن">
               <input className="input" type="number" step="0.01" value={product.shipping_amount} onChange={(e) => setProduct({ ...product, shipping_amount: Number(e.target.value) })} />
+            </Label>
+
+            <Label title="الكمية المتوفرة">
+              <input className="input" type="number" min="0" step="1" value={product.stock_quantity} onChange={(e) => setProduct({ ...product, stock_quantity: Number(e.target.value) })} />
             </Label>
           </div>
 
