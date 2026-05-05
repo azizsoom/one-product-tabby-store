@@ -12,6 +12,7 @@ type Product = {
   description: string | null;
   price_before_vat: number;
   shipping_amount: number;
+  stock_quantity: number;
   image_url: string | null;
   is_active: boolean;
 };
@@ -19,6 +20,7 @@ type Product = {
 export default function HomePage() {
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
+  const [quantity, setQuantity] = useState(1);
   const [customerName, setCustomerName] = useState('');
   const [customerMobile, setCustomerMobile] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
@@ -39,26 +41,46 @@ export default function HomePage() {
       .single();
 
     if (!error && data) {
-      setProduct(data);
+      setProduct({ ...data, stock_quantity: Number(data.stock_quantity ?? 0) });
     }
     setLoading(false);
   }
+
+  const stockQuantity = Number(product?.stock_quantity ?? 0);
+  const maxAllowedQuantity = Math.max(0, stockQuantity);
 
   const preview = useMemo(() => {
     if (!product) return null;
     return calculateOrder({
       unitPriceBeforeVat: Number(product.price_before_vat || 0),
-      quantity: 1,
+      quantity,
       discountType: 'percentage',
       discountValue: 10,
       shippingAmount: Number(product.shipping_amount || 0),
     });
-  }, [product]);
+  }, [product, quantity]);
+
+  function updateQuantity(nextQuantity: number) {
+    const safeQuantity = Math.max(1, Math.min(maxAllowedQuantity || 1, Math.floor(nextQuantity || 1)));
+    setQuantity(safeQuantity);
+  }
 
   async function startTabbyCheckout() {
     if (!product || !preview) return;
     setSaving(true);
     setMessage('');
+
+    if (maxAllowedQuantity <= 0) {
+      setSaving(false);
+      setMessage('المنتج غير متوفر حاليًا.');
+      return;
+    }
+
+    if (quantity > maxAllowedQuantity) {
+      setSaving(false);
+      setMessage(`الكمية المطلوبة أكبر من المتوفر. المتوفر حاليًا ${maxAllowedQuantity}.`);
+      return;
+    }
 
     if (!customerName.trim() || !customerMobile.trim() || !customerEmail.trim()) {
       setSaving(false);
@@ -79,6 +101,7 @@ export default function HomePage() {
         customerName,
         customerMobile,
         customerEmail,
+        quantity,
       }),
     });
 
@@ -122,13 +145,27 @@ export default function HomePage() {
           <h1 className="text-4xl font-black leading-tight md:text-5xl">{product.name}</h1>
           <p className="mt-4 text-lg leading-8 text-stone-600">{product.description || 'منتج بصفحة شراء مختصرة وحسابات ضريبية دقيقة'}</p>
 
+          <div className="mt-4 rounded-2xl bg-white px-4 py-3 text-sm text-stone-600 shadow-sm ring-1 ring-stone-200">
+            المتوفر حاليًا: <strong className="text-stone-950">{maxAllowedQuantity}</strong>
+          </div>
+
           <div className="mt-8 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-stone-200">
             <div className="mb-5 flex items-center justify-between border-b border-stone-100 pb-4">
-              <span className="text-stone-500">السعر قبل الضريبة</span>
+              <span className="text-stone-500">السعر قبل الضريبة للحبة</span>
               <strong className="text-2xl">{Number(product.price_before_vat || 0).toFixed(2)} ريال</strong>
             </div>
 
+            <div className="mb-5">
+              <label className="mb-2 block text-sm font-bold text-stone-700">الكمية المطلوبة</label>
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={() => updateQuantity(quantity - 1)} className="h-12 w-12 rounded-2xl bg-stone-100 text-xl font-black">-</button>
+                <input className="input max-w-28 text-center" type="number" min="1" max={maxAllowedQuantity || 1} value={quantity} onChange={(e) => updateQuantity(Number(e.target.value))} />
+                <button type="button" onClick={() => updateQuantity(quantity + 1)} className="h-12 w-12 rounded-2xl bg-stone-100 text-xl font-black">+</button>
+              </div>
+            </div>
+
             <div className="space-y-3 text-sm">
+              <Row label="المجموع قبل الخصم" value={`${preview.subtotalBeforeDiscount.toFixed(2)} ريال`} />
               <Row label="خصم تجريبي 10%" value={`-${preview.discountAmount.toFixed(2)} ريال`} />
               <Row label="الصافي الخاضع للضريبة" value={`${preview.taxableAmount.toFixed(2)} ريال`} />
               <Row label="ضريبة القيمة المضافة 15%" value={`${preview.vatAmount.toFixed(2)} ريال`} />
@@ -147,15 +184,15 @@ export default function HomePage() {
 
             {message ? <p className="mt-4 rounded-2xl bg-stone-100 p-3 text-sm">{message}</p> : null}
 
-            <button onClick={startTabbyCheckout} disabled={saving} className="mt-6 w-full rounded-2xl bg-emerald-600 px-6 py-4 text-lg font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50">
-              {saving ? 'جاري تحويلك إلى تابي...' : 'الدفع عبر تابي'}
+            <button onClick={startTabbyCheckout} disabled={saving || maxAllowedQuantity <= 0} className="mt-6 w-full rounded-2xl bg-emerald-600 px-6 py-4 text-lg font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50">
+              {maxAllowedQuantity <= 0 ? 'غير متوفر حاليًا' : saving ? 'جاري تحويلك إلى تابي...' : 'الدفع عبر تابي'}
             </button>
           </div>
 
           <div className="mt-6 grid grid-cols-3 gap-3 text-center text-sm text-stone-600">
             <Feature icon={<Truck size={20} />} text={preview.shippingAmount === 0 ? 'شحن مجاني' : 'شحن محسوب'} />
             <Feature icon={<BadgePercent size={20} />} text="كود خصم" />
-            <Feature icon={<ShoppingBag size={20} />} text="طلب مختصر" />
+            <Feature icon={<ShoppingBag size={20} />} text="تحديد الكمية" />
           </div>
         </div>
       </section>
