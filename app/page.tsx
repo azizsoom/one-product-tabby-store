@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { ShoppingBag, ShieldCheck, Trash2 } from 'lucide-react';
 import { db } from '../lib/db';
+import TabbyPromoWidget from './components/TabbyPromoWidget';
 
 type Product = {
   id: string;
@@ -253,14 +254,7 @@ export default function HomePage() {
                 <span>الإجمالي</span>
                 <strong className="text-2xl">{preview.totalAmount.toFixed(2)} ريال</strong>
               </div>
-              {cart.length > 0 ? (
-                <div className="rounded-2xl border border-violet-100 bg-violet-50 p-3 text-violet-950">
-                  <p className="font-black">قسّمها على 4 دفعات مع تابي</p>
-                  <p className="mt-1 text-sm">
-                    تقريبًا {(Math.ceil((preview.totalAmount / 4) * 100) / 100).toFixed(2)} ريال لكل دفعة، بدون فوائد حسب قبول تابي.
-                  </p>
-                </div>
-              ) : null}
+              {cart.length > 0 ? <TabbyPromoWidget price={preview.totalAmount} source="cart" /> : null}
             </div>
 
             {message ? <p className="mt-4 rounded-2xl bg-stone-100 p-3 text-sm">{message}</p> : null}
