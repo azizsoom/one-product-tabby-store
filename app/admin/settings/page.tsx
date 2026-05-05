@@ -14,6 +14,11 @@ const defaults: Record<string, string> = {
   store_city: 'الرياض',
   vat_number: '300339747477747',
   footer_text: 'شركة المطارة - الرياض',
+  tabby_public_key: '',
+  tabby_secret_key: '',
+  tabby_merchant_code: 'kuredais',
+  tabby_api_url: 'https://api.tabby.sa/api/v2/checkout',
+  tabby_mode: 'test',
 };
 
 export default function SettingsPage() {
@@ -92,6 +97,24 @@ export default function SettingsPage() {
             ) : null}
           </div>
 
+          <div className="mt-6 rounded-3xl bg-violet-50 p-5 ring-1 ring-violet-100">
+            <h2 className="text-xl font-black text-violet-950">إعدادات الربط مع تابي</h2>
+            <p className="mt-2 text-sm leading-6 text-violet-800">تقدر تعدل مفاتيح تابي من هنا. في التشغيل الحقيقي يفضل الاحتفاظ بالمفتاح السري داخل Vercel.</p>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <Field label="مفتاح تابي العام Public Key" value={settings.tabby_public_key} onChange={(v) => setSettings({ ...settings, tabby_public_key: v })} placeholder="pk_test_..." />
+              <Field label="رمز التاجر Merchant Code" value={settings.tabby_merchant_code} onChange={(v) => setSettings({ ...settings, tabby_merchant_code: v })} placeholder="kuredais" />
+              <Field label="رابط API تابي" value={settings.tabby_api_url} onChange={(v) => setSettings({ ...settings, tabby_api_url: v })} placeholder="https://api.tabby.sa/api/v2/checkout" />
+              <label>
+                <span className="mb-2 block text-sm font-bold text-stone-700">وضع الربط</span>
+                <select className="input" value={settings.tabby_mode} onChange={(e) => setSettings({ ...settings, tabby_mode: e.target.value })}>
+                  <option value="test">تجريبي test</option>
+                  <option value="live">فعلي live</option>
+                </select>
+              </label>
+              <Field label="مفتاح تابي السري Secret Key" type="password" value={settings.tabby_secret_key} onChange={(v) => setSettings({ ...settings, tabby_secret_key: v })} placeholder="sk_test_..." />
+            </div>
+          </div>
+
           {message ? <p className="mt-4 rounded-2xl bg-stone-100 p-3 text-sm">{message}</p> : null}
           <button onClick={saveSettings} className="mt-6 rounded-2xl bg-emerald-600 px-6 py-3 font-bold text-white">حفظ الإعدادات</button>
         </div>
@@ -100,6 +123,6 @@ export default function SettingsPage() {
   );
 }
 
-function Field({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  return <label><span className="mb-2 block text-sm font-bold text-stone-700">{label}</span><input className="input" value={value} onChange={(e) => onChange(e.target.value)} /></label>;
+function Field({ label, value, onChange, placeholder = '', type = 'text' }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; type?: string }) {
+  return <label><span className="mb-2 block text-sm font-bold text-stone-700">{label}</span><input className="input" type={type} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} /></label>;
 }
