@@ -3,8 +3,8 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const tabbySecretKey = process.env.TABBY_SECRET_KEY || '';
-const merchantCode = process.env.TABBY_MERCHANT_CODE || '';
+const fallbackTabbySecretKey = process.env.TABBY_SECRET_KEY || '';
+const fallbackMerchantCode = process.env.TABBY_MERCHANT_CODE || '';
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://one-product-tabby-store.vercel.app';
 
 const db = createClient(supabaseUrl, supabaseKey);
@@ -14,10 +14,17 @@ type RequestedItem = {
   quantity: number;
 };
 
+type StoreSettings = Record<string, string>;
+
 export async function POST(request: NextRequest) {
   try {
+    const settings = await getStoreSettings();
+    const tabbySecretKey = settings.tabby_secret_key || fallbackTabbySecretKey;
+    const merchantCode = settings.tabby_merchant_code || fallbackMerchantCode;
+    const tabbyApiUrl = settings.tabby_api_url || 'https://api.tabby.sa/api/v2/checkout';
+
     if (!tabbySecretKey || !merchantCode) {
-      return NextResponse.json({ error: 'Tabby keys are missing in Vercel.' }, { status: 500 });
+      return NextResponse.json({ error: 'Tabby keys are missing in admin settings or Vercel.' }, { status: 500 });
     }
 
     const body = await request.json().catch(() => ({}));
@@ -158,7 +165,7 @@ export async function POST(request: NextRequest) {
       },
     };
 
-    const tabbyResponse = await fetch('https://api.tabby.sa/api/v2/checkout', {
+    const tabbyResponse = await fetch(tabbyApiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -188,6 +195,15 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || 'Unexpected error.' }, { status: 500 });
   }
+}
+
+async function getStoreSettings(): Promise<StoreSettings> {
+  const { data } = await db.from('store_settings').select('key,value');
+  const settings: StoreSettings = {};
+  (data || []).forEach((row: any) => {
+    settings[row.key] = row.value || '';
+  });
+  return settings;
 }
 
 function calculateCartOrder(cartItems: Array<{ product: any; quantity: number }>) {
