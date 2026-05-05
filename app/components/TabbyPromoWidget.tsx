@@ -55,12 +55,10 @@ export default function TabbyPromoWidget({ price, source = 'cart' }: Props) {
     const container = document.querySelector(selector);
     if (!container || !settings.publicKey || price <= 0) return;
 
-    container.innerHTML = '';
-
-    function renderPromo() {
-      if (!window.TabbyPromo) return;
+    const renderPromo = () => {
       const element = document.querySelector(selector);
-      if (!element) return;
+      if (!element || !window.TabbyPromo) return;
+
       element.innerHTML = '';
       new window.TabbyPromo({
         selector,
@@ -72,12 +70,19 @@ export default function TabbyPromoWidget({ price, source = 'cart' }: Props) {
         publicKey: settings.publicKey,
         merchantCode: settings.merchantCode,
       });
-    }
+    };
 
-    const existingScript = document.querySelector('script[data-tabby-promo="true"]');
-    if (existingScript) {
+    const existingScript = document.querySelector<HTMLScriptElement>('script[data-tabby-promo="true"]');
+
+    if (window.TabbyPromo) {
       renderPromo();
       return;
+    }
+
+    if (existingScript) {
+      existingScript.addEventListener('load', renderPromo, { once: true });
+      const retryTimer = window.setTimeout(renderPromo, 600);
+      return () => window.clearTimeout(retryTimer);
     }
 
     const script = document.createElement('script');
@@ -88,8 +93,6 @@ export default function TabbyPromoWidget({ price, source = 'cart' }: Props) {
     document.body.appendChild(script);
   }, [price, source, selector, settings.publicKey, settings.merchantCode]);
 
-  if (price <= 0) return null;
-
   if (!settings.publicKey) {
     return (
       <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
@@ -98,5 +101,17 @@ export default function TabbyPromoWidget({ price, source = 'cart' }: Props) {
     );
   }
 
-  return <div id={`tabby-promo-${id}`} className="overflow-hidden rounded-2xl bg-white" />;
+  if (price <= 0) {
+    return (
+      <div className="rounded-2xl border border-violet-100 bg-violet-50 p-3 text-sm font-bold text-violet-950">
+        أضف منتجات للسلة لعرض خيارات التقسيط من تابي.
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-violet-100 bg-white p-2">
+      <div key={`${id}-${Number(price || 0).toFixed(2)}-${settings.publicKey}-${settings.merchantCode}`} id={`tabby-promo-${id}`} />
+    </div>
+  );
 }
