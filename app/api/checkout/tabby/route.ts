@@ -19,6 +19,7 @@ export async function POST(request: NextRequest) {
     const customerName = body.customerName || 'عميل المتجر';
     const customerMobile = body.customerMobile || '0550000000';
     const customerEmail = body.customerEmail || 'customer@example.com';
+    const requestedQuantity = Math.max(1, Math.floor(Number(body.quantity || 1)));
 
     const { data: product, error: productError } = await db
       .from('products')
@@ -31,9 +32,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No active product found.' }, { status: 400 });
     }
 
+    const stockQuantity = Number(product.stock_quantity ?? 0);
+    if (stockQuantity <= 0) {
+      return NextResponse.json({ error: 'Product is out of stock.' }, { status: 400 });
+    }
+
+    if (requestedQuantity > stockQuantity) {
+      return NextResponse.json({ error: `Requested quantity is more than stock. Available: ${stockQuantity}` }, { status: 400 });
+    }
+
     const totals = calculateOrder({
       unitPriceBeforeVat: Number(product.price_before_vat || 0),
-      quantity: 1,
+      quantity: requestedQuantity,
       discountType: 'percentage',
       discountValue: 10,
       shippingAmount: Number(product.shipping_amount || 0),
@@ -47,7 +57,7 @@ export async function POST(request: NextRequest) {
         customer_email: customerEmail,
         product_id: product.id,
         product_name: product.name,
-        quantity: 1,
+        quantity: requestedQuantity,
         unit_price_before_vat: Number(product.price_before_vat || 0),
         subtotal_before_discount: totals.subtotalBeforeDiscount,
         discount_code: 'TEST10',
@@ -85,11 +95,14 @@ export async function POST(request: NextRequest) {
             {
               title: product.name,
               description: product.description || product.name,
-              quantity: 1,
-              unit_price: amount,
+              quantity: requestedQuantity,
+              unit_price: Number(product.price_before_vat || 0).toFixed(2),
               category: 'water bottle',
             },
           ],
+          tax_amount: totals.vatAmount.toFixed(2),
+          shipping_amount: totals.shippingAmount.toFixed(2),
+          discount_amount: totals.discountAmount.toFixed(2),
         },
         buyer_history: {
           registered_since: new Date().toISOString(),
@@ -107,6 +120,7 @@ export async function POST(request: NextRequest) {
         },
         meta: {
           order_id: order.id,
+          quantity: requestedQuantity,
         },
       },
       lang: 'ar',
