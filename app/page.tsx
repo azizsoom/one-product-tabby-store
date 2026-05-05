@@ -25,9 +25,9 @@ export default function HomePage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [customerName, setCustomerName] = useState('');
-  const [customerMobile, setCustomerMobile] = useState('');
-  const [customerEmail, setCustomerEmail] = useState('');
+  const [customerName, setCustomerName] = useState('Test User');
+  const [customerMobile, setCustomerMobile] = useState('+966500000001');
+  const [customerEmail, setCustomerEmail] = useState('otp.success@tabby.ai');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -253,6 +253,14 @@ export default function HomePage() {
                 <span>الإجمالي</span>
                 <strong className="text-2xl">{preview.totalAmount.toFixed(2)} ريال</strong>
               </div>
+              {cart.length > 0 ? (
+                <div className="rounded-2xl border border-violet-100 bg-violet-50 p-3 text-violet-950">
+                  <p className="font-black">قسّمها على 4 دفعات مع تابي</p>
+                  <p className="mt-1 text-sm">
+                    تقريبًا {(Math.ceil((preview.totalAmount / 4) * 100) / 100).toFixed(2)} ريال لكل دفعة، بدون فوائد حسب قبول تابي.
+                  </p>
+                </div>
+              ) : null}
             </div>
 
             {message ? <p className="mt-4 rounded-2xl bg-stone-100 p-3 text-sm">{message}</p> : null}
