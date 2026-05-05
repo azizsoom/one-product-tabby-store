@@ -1,9 +1,8 @@
 'use client';
 
-import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { ShoppingBag, ShieldCheck, Truck, BadgePercent } from 'lucide-react';
+import { ShoppingBag, ShieldCheck } from 'lucide-react';
 import { db } from '../lib/db';
 
 type Product = {
@@ -18,7 +17,8 @@ type Product = {
 };
 
 export default function HomePage() {
-  const [product, setProduct] = useState<Product | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [quantity, setQuantity] = useState(1);
   const [customerName, setCustomerName] = useState('');
@@ -28,37 +28,49 @@ export default function HomePage() {
   const [message, setMessage] = useState('');
 
   useEffect(() => {
-    loadProduct();
+    loadProducts();
   }, []);
 
-  async function loadProduct() {
+  async function loadProducts() {
     setLoading(true);
-    const { data, error } = await db
+    const { data } = await db
       .from('products')
       .select('*')
       .eq('is_active', true)
-      .limit(1)
-      .single();
+      .order('created_at', { ascending: false });
 
-    if (!error && data) {
-      setProduct({ ...data, stock_quantity: Number(data.stock_quantity ?? 0) });
-    }
+    const items = (data || []).map((item: any) => ({
+      ...item,
+      stock_quantity: Number(item.stock_quantity ?? 0),
+    })) as Product[];
+
+    setProducts(items);
+    if (items.length > 0) setSelectedProduct(items[0]);
     setLoading(false);
   }
 
-  const stockQuantity = Number(product?.stock_quantity ?? 0);
+  const stockQuantity = Number(selectedProduct?.stock_quantity ?? 0);
   const maxAllowedQuantity = Math.max(0, stockQuantity);
 
   const preview = useMemo(() => {
-    if (!product) return null;
+    if (!selectedProduct) return null;
     return calculateOrder({
-      unitPriceBeforeVat: Number(product.price_before_vat || 0),
+      unitPriceBeforeVat: Number(selectedProduct.price_before_vat || 0),
       quantity,
       discountType: 'percentage',
       discountValue: 10,
-      shippingAmount: Number(product.shipping_amount || 0),
+      shippingAmount: Number(selectedProduct.shipping_amount || 0),
     });
-  }, [product, quantity]);
+  }, [selectedProduct, quantity]);
+
+  function selectProduct(product: Product) {
+    setSelectedProduct(product);
+    setQuantity(1);
+    setMessage('');
+    setTimeout(() => {
+      document.getElementById('checkout-box')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+  }
 
   function updateQuantity(nextQuantity: number) {
     const safeQuantity = Math.max(1, Math.min(maxAllowedQuantity || 1, Math.floor(nextQuantity || 1)));
@@ -66,7 +78,7 @@ export default function HomePage() {
   }
 
   async function startTabbyCheckout() {
-    if (!product || !preview) return;
+    if (!selectedProduct || !preview) return;
     setSaving(true);
     setMessage('');
 
@@ -98,6 +110,7 @@ export default function HomePage() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        productId: selectedProduct.id,
         customerName,
         customerMobile,
         customerEmail,
@@ -117,87 +130,118 @@ export default function HomePage() {
   }
 
   if (loading) {
-    return <main className="min-h-screen bg-stone-50 p-6 text-stone-950" dir="rtl">جاري تحميل المنتج...</main>;
+    return <main className="min-h-screen bg-stone-50 p-6 text-stone-950" dir="rtl">جاري تحميل المنتجات...</main>;
   }
 
-  if (!product || !preview) {
-    return <main className="min-h-screen bg-stone-50 p-6 text-stone-950" dir="rtl">لا يوجد منتج مفعل.</main>;
+  if (products.length === 0) {
+    return <main className="min-h-screen bg-stone-50 p-6 text-stone-950" dir="rtl">لا توجد منتجات مفعلة.</main>;
   }
 
   return (
     <main className="min-h-screen bg-stone-50 text-stone-950" dir="rtl">
-      <section className="mx-auto grid max-w-6xl gap-10 px-5 py-10 md:grid-cols-2 md:py-16">
-        <div className="flex items-center justify-center rounded-[2rem] bg-white p-8 shadow-sm ring-1 ring-stone-200">
-          {product.image_url ? (
-            <img src={product.image_url} alt={product.name} className="max-h-96 w-full object-contain" />
-          ) : (
-            <div className="flex h-80 w-80 items-center justify-center rounded-3xl bg-stone-100 text-center text-stone-500">
-              صورة {product.name}
+      <section className="mx-auto max-w-7xl px-4 py-8">
+        <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-end">
+          <div>
+            <div className="mb-3 inline-flex w-fit items-center gap-2 rounded-full bg-emerald-100 px-4 py-2 text-sm font-semibold text-emerald-800">
+              <ShieldCheck size={18} /> جاهز لحساب الضريبة وربط تابي
             </div>
-          )}
+            <h1 className="text-3xl font-black md:text-5xl">منتجات المتجر</h1>
+            <p className="mt-3 text-stone-600">اختر المنتج والكمية ثم أكمل الدفع عبر تابي.</p>
+          </div>
         </div>
 
-        <div className="flex flex-col justify-center">
-          <div className="mb-4 inline-flex w-fit items-center gap-2 rounded-full bg-emerald-100 px-4 py-2 text-sm font-semibold text-emerald-800">
-            <ShieldCheck size={18} /> جاهز لحساب ضريبة 15% وربط تابي
-          </div>
-
-          <h1 className="text-4xl font-black leading-tight md:text-5xl">{product.name}</h1>
-          <p className="mt-4 text-lg leading-8 text-stone-600">{product.description || 'منتج بصفحة شراء مختصرة وحسابات ضريبية دقيقة'}</p>
-
-          <div className="mt-4 rounded-2xl bg-white px-4 py-3 text-sm text-stone-600 shadow-sm ring-1 ring-stone-200">
-            المتوفر حاليًا: <strong className="text-stone-950">{maxAllowedQuantity}</strong>
-          </div>
-
-          <div className="mt-8 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-stone-200">
-            <div className="mb-5 flex items-center justify-between border-b border-stone-100 pb-4">
-              <span className="text-stone-500">السعر قبل الضريبة للحبة</span>
-              <strong className="text-2xl">{Number(product.price_before_vat || 0).toFixed(2)} ريال</strong>
-            </div>
-
-            <div className="mb-5">
-              <label className="mb-2 block text-sm font-bold text-stone-700">الكمية المطلوبة</label>
-              <div className="flex items-center gap-3">
-                <button type="button" onClick={() => updateQuantity(quantity - 1)} className="h-12 w-12 rounded-2xl bg-stone-100 text-xl font-black">-</button>
-                <input className="input max-w-28 text-center" type="number" min="1" max={maxAllowedQuantity || 1} value={quantity} onChange={(e) => updateQuantity(Number(e.target.value))} />
-                <button type="button" onClick={() => updateQuantity(quantity + 1)} className="h-12 w-12 rounded-2xl bg-stone-100 text-xl font-black">+</button>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6">
+          {products.map((product) => (
+            <button
+              key={product.id}
+              type="button"
+              onClick={() => selectProduct(product)}
+              className={`overflow-hidden rounded-2xl bg-white text-right shadow-sm ring-1 transition hover:-translate-y-1 hover:shadow-md ${selectedProduct?.id === product.id ? 'ring-2 ring-emerald-600' : 'ring-stone-200'}`}
+            >
+              <div className="relative aspect-square bg-stone-100">
+                {product.image_url ? (
+                  <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full items-center justify-center p-4 text-center text-sm text-stone-500">صورة المنتج</div>
+                )}
+                {Number(product.stock_quantity || 0) <= 0 ? (
+                  <span className="absolute right-2 top-2 rounded-full bg-red-600 px-2 py-1 text-xs font-bold text-white">نفدت</span>
+                ) : null}
               </div>
-            </div>
 
-            <div className="space-y-3 text-sm">
-              <Row label="المجموع قبل الخصم" value={`${preview.subtotalBeforeDiscount.toFixed(2)} ريال`} />
-              <Row label="خصم تجريبي 10%" value={`-${preview.discountAmount.toFixed(2)} ريال`} />
-              <Row label="الصافي الخاضع للضريبة" value={`${preview.taxableAmount.toFixed(2)} ريال`} />
-              <Row label="ضريبة القيمة المضافة 15%" value={`${preview.vatAmount.toFixed(2)} ريال`} />
-              <Row label="الشحن" value={preview.shippingAmount === 0 ? 'مجاني' : `${preview.shippingAmount.toFixed(2)} ريال`} />
-              <div className="mt-4 flex items-center justify-between rounded-2xl bg-stone-950 px-5 py-4 text-white">
-                <span>الإجمالي للدفع عبر تابي</span>
-                <strong className="text-2xl">{preview.totalAmount.toFixed(2)} ريال</strong>
+              <div className="p-3">
+                <h2 className="line-clamp-2 min-h-10 text-sm font-black leading-5 text-stone-700">{product.name}</h2>
+                <p className="mt-2 text-center text-xs font-black text-orange-500">أفضل سعر</p>
+                <p className="text-center text-2xl font-black text-stone-700">{Number(product.price_before_vat || 0).toFixed(0)}</p>
+                <p className="text-center text-xs text-stone-500">ريال قبل الضريبة</p>
+                <div className="mt-3 flex items-center justify-between rounded-xl border border-stone-300 px-3 py-2 text-sm font-black text-stone-700">
+                  <span>إضافة للسلة</span>
+                  <span className="text-xl">+</span>
+                </div>
               </div>
-            </div>
-
-            <div className="mt-6 grid gap-3 md:grid-cols-3">
-              <input className="input" placeholder="اسم العميل" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
-              <input className="input" placeholder="رقم الجوال" value={customerMobile} onChange={(e) => setCustomerMobile(e.target.value)} />
-              <input className="input" placeholder="البريد الإلكتروني" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} />
-            </div>
-
-            {message ? <p className="mt-4 rounded-2xl bg-stone-100 p-3 text-sm">{message}</p> : null}
-
-            <button onClick={startTabbyCheckout} disabled={saving || maxAllowedQuantity <= 0} className="mt-6 w-full rounded-2xl bg-emerald-600 px-6 py-4 text-lg font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50">
-              {maxAllowedQuantity <= 0 ? 'غير متوفر حاليًا' : saving ? 'جاري تحويلك إلى تابي...' : 'الدفع عبر تابي'}
             </button>
-          </div>
-
-          <div className="mt-6 grid grid-cols-3 gap-3 text-center text-sm text-stone-600">
-            <Feature icon={<Truck size={20} />} text={preview.shippingAmount === 0 ? 'شحن مجاني' : 'شحن محسوب'} />
-            <Feature icon={<BadgePercent size={20} />} text="كود خصم" />
-            <Feature icon={<ShoppingBag size={20} />} text="تحديد الكمية" />
-          </div>
+          ))}
         </div>
+
+        {selectedProduct && preview ? (
+          <section id="checkout-box" className="mt-8 grid gap-6 lg:grid-cols-[1fr_420px]">
+            <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-stone-200">
+              <h2 className="text-2xl font-black">تفاصيل المنتج المختار</h2>
+              <div className="mt-4 flex gap-4">
+                <div className="h-28 w-28 shrink-0 overflow-hidden rounded-2xl bg-stone-100">
+                  {selectedProduct.image_url ? <img src={selectedProduct.image_url} alt={selectedProduct.name} className="h-full w-full object-cover" /> : null}
+                </div>
+                <div>
+                  <h3 className="text-xl font-black">{selectedProduct.name}</h3>
+                  <p className="mt-2 line-clamp-3 text-sm leading-6 text-stone-600">{selectedProduct.description || 'منتج من متجرنا'}</p>
+                  <p className="mt-2 text-sm text-stone-600">المتوفر: <strong className="text-stone-950">{maxAllowedQuantity}</strong></p>
+                </div>
+              </div>
+
+              <div className="mt-5">
+                <label className="mb-2 block text-sm font-bold text-stone-700">الكمية المطلوبة</label>
+                <div className="flex items-center gap-3">
+                  <button type="button" onClick={() => updateQuantity(quantity - 1)} className="h-12 w-12 rounded-2xl bg-stone-100 text-xl font-black">-</button>
+                  <input className="input max-w-28 text-center" type="number" min="1" max={maxAllowedQuantity || 1} value={quantity} onChange={(e) => updateQuantity(Number(e.target.value))} />
+                  <button type="button" onClick={() => updateQuantity(quantity + 1)} className="h-12 w-12 rounded-2xl bg-stone-100 text-xl font-black">+</button>
+                </div>
+              </div>
+
+              <div className="mt-6 grid gap-3 md:grid-cols-3">
+                <input className="input" placeholder="اسم العميل" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+                <input className="input" placeholder="رقم الجوال" value={customerMobile} onChange={(e) => setCustomerMobile(e.target.value)} />
+                <input className="input" placeholder="البريد الإلكتروني" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-stone-200">
+              <h2 className="text-2xl font-black">ملخص الطلب</h2>
+              <div className="mt-5 space-y-3 text-sm">
+                <Row label="سعر الحبة قبل الضريبة" value={`${Number(selectedProduct.price_before_vat || 0).toFixed(2)} ريال`} />
+                <Row label="الكمية" value={`${quantity}`} />
+                <Row label="المجموع قبل الخصم" value={`${preview.subtotalBeforeDiscount.toFixed(2)} ريال`} />
+                <Row label="خصم تجريبي 10%" value={`-${preview.discountAmount.toFixed(2)} ريال`} />
+                <Row label="الصافي الخاضع للضريبة" value={`${preview.taxableAmount.toFixed(2)} ريال`} />
+                <Row label="ضريبة القيمة المضافة 15%" value={`${preview.vatAmount.toFixed(2)} ريال`} />
+                <Row label="الشحن" value={preview.shippingAmount === 0 ? 'مجاني' : `${preview.shippingAmount.toFixed(2)} ريال`} />
+                <div className="mt-4 flex items-center justify-between rounded-2xl bg-stone-950 px-5 py-4 text-white">
+                  <span>الإجمالي</span>
+                  <strong className="text-2xl">{preview.totalAmount.toFixed(2)} ريال</strong>
+                </div>
+              </div>
+
+              {message ? <p className="mt-4 rounded-2xl bg-stone-100 p-3 text-sm">{message}</p> : null}
+
+              <button onClick={startTabbyCheckout} disabled={saving || maxAllowedQuantity <= 0} className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-6 py-4 text-lg font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50">
+                <ShoppingBag size={20} />
+                {maxAllowedQuantity <= 0 ? 'غير متوفر حاليًا' : saving ? 'جاري تحويلك إلى تابي...' : 'الدفع عبر تابي'}
+              </button>
+            </div>
+          </section>
+        ) : null}
       </section>
 
-      <footer className="mx-auto max-w-6xl px-5 pb-10 text-center text-sm text-stone-600">
+      <footer className="mx-auto max-w-7xl px-4 pb-10 text-center text-sm text-stone-600">
         <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-stone-200">
           <p className="font-bold text-stone-900">شركة المطارة</p>
           <p className="mt-1">الرياض - الرقم الضريبي: 300339747477747</p>
@@ -245,18 +289,9 @@ function isValidEmail(email: string) {
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between">
+    <div className="flex items-center justify-between gap-3">
       <span className="text-stone-500">{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function Feature({ icon, text }: { icon: ReactNode; text: string }) {
-  return (
-    <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-stone-200">
-      <div className="mx-auto mb-2 flex w-fit text-emerald-700">{icon}</div>
-      {text}
+      <strong className="text-left">{value}</strong>
     </div>
   );
 }
