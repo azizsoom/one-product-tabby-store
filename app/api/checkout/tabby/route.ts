@@ -9,6 +9,11 @@ const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://one-product-tabby-s
 
 const db = createClient(supabaseUrl, supabaseKey);
 
+type RequestedItem = {
+  productId: string;
+  quantity: number;
+};
+
 export async function POST(request: NextRequest) {
   try {
     if (!tabbySecretKey || !merchantCode) {
@@ -16,36 +21,52 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json().catch(() => ({}));
-    const productId = body.productId || '';
     const customerName = body.customerName || 'عميل المتجر';
     const customerMobile = body.customerMobile || '0550000000';
     const customerEmail = body.customerEmail || 'customer@example.com';
-    const requestedQuantity = Math.max(1, Math.floor(Number(body.quantity || 1)));
 
-    let productQuery = db.from('products').select('*').eq('is_active', true).limit(1);
-    if (productId) productQuery = productQuery.eq('id', productId);
-    const { data: product, error: productError } = await productQuery.single();
+    const requestedItems: RequestedItem[] = Array.isArray(body.items)
+      ? body.items.map((item: any) => ({
+          productId: String(item.productId || ''),
+          quantity: Math.max(1, Math.floor(Number(item.quantity || 1))),
+        })).filter((item: RequestedItem) => item.productId)
+      : body.productId
+        ? [{ productId: String(body.productId), quantity: Math.max(1, Math.floor(Number(body.quantity || 1))) }]
+        : [];
 
-    if (productError || !product) {
-      return NextResponse.json({ error: 'No active product found.' }, { status: 400 });
+    if (requestedItems.length === 0) {
+      return NextResponse.json({ error: 'Cart is empty.' }, { status: 400 });
     }
 
-    const stockQuantity = Number(product.stock_quantity ?? 0);
-    if (stockQuantity <= 0) {
-      return NextResponse.json({ error: 'Product is out of stock.' }, { status: 400 });
+    const productIds = requestedItems.map((item) => item.productId);
+    const { data: products, error: productError } = await db
+      .from('products')
+      .select('*')
+      .eq('is_active', true)
+      .in('id', productIds);
+
+    if (productError || !products || products.length === 0) {
+      return NextResponse.json({ error: 'No active products found.' }, { status: 400 });
     }
 
-    if (requestedQuantity > stockQuantity) {
-      return NextResponse.json({ error: `Requested quantity is more than stock. Available: ${stockQuantity}` }, { status: 400 });
+    if (products.length !== productIds.length) {
+      return NextResponse.json({ error: 'One or more products are not available.' }, { status: 400 });
     }
 
-    const totals = calculateOrder({
-      unitPriceBeforeVat: Number(product.price_before_vat || 0),
-      quantity: requestedQuantity,
-      discountType: 'percentage',
-      discountValue: 10,
-      shippingAmount: Number(product.shipping_amount || 0),
+    const cartItems = requestedItems.map((requested) => {
+      const product = products.find((item: any) => item.id === requested.productId);
+      if (!product) throw new Error('Product not found in cart.');
+
+      const stockQuantity = Number(product.stock_quantity ?? 0);
+      if (stockQuantity <= 0) throw new Error(`Product is out of stock: ${product.name}`);
+      if (requested.quantity > stockQuantity) throw new Error(`Requested quantity is more than stock for ${product.name}. Available: ${stockQuantity}`);
+
+      return { product, quantity: requested.quantity };
     });
+
+    const totals = calculateCartOrder(cartItems);
+    const mainProductName = cartItems.length === 1 ? cartItems[0].product.name : `طلب من المتجر - ${cartItems.length} منتجات`;
+    const totalQuantity = cartItems.reduce((sum, item) => sum + item.quantity, 0);
 
     const { data: order, error: orderError } = await db
       .from('orders')
@@ -53,10 +74,10 @@ export async function POST(request: NextRequest) {
         customer_name: customerName,
         customer_mobile: customerMobile,
         customer_email: customerEmail,
-        product_id: product.id,
-        product_name: product.name,
-        quantity: requestedQuantity,
-        unit_price_before_vat: Number(product.price_before_vat || 0),
+        product_id: cartItems[0].product.id,
+        product_name: mainProductName,
+        quantity: totalQuantity,
+        unit_price_before_vat: Number(cartItems[0].product.price_before_vat || 0),
         subtotal_before_discount: totals.subtotalBeforeDiscount,
         discount_code: 'TEST10',
         discount_amount: totals.discountAmount,
@@ -68,6 +89,14 @@ export async function POST(request: NextRequest) {
         payment_method: 'tabby',
         payment_status: 'pending',
         order_status: 'new',
+        admin_notes: JSON.stringify({
+          cart_items: cartItems.map((item) => ({
+            product_id: item.product.id,
+            name: item.product.name,
+            quantity: item.quantity,
+            unit_price_before_vat: Number(item.product.price_before_vat || 0),
+          })),
+        }),
       })
       .select('*')
       .single();
@@ -81,7 +110,7 @@ export async function POST(request: NextRequest) {
       payment: {
         amount,
         currency: 'SAR',
-        description: product.name,
+        description: mainProductName,
         buyer: {
           name: customerName,
           email: customerEmail,
@@ -89,15 +118,13 @@ export async function POST(request: NextRequest) {
         },
         order: {
           reference_id: order.id,
-          items: [
-            {
-              title: product.name,
-              description: product.description || product.name,
-              quantity: requestedQuantity,
-              unit_price: Number(product.price_before_vat || 0).toFixed(2),
-              category: 'product',
-            },
-          ],
+          items: cartItems.map((item) => ({
+            title: item.product.name,
+            description: item.product.description || item.product.name,
+            quantity: item.quantity,
+            unit_price: Number(item.product.price_before_vat || 0).toFixed(2),
+            category: 'product',
+          })),
           tax_amount: totals.vatAmount.toFixed(2),
           shipping_amount: totals.shippingAmount.toFixed(2),
           discount_amount: totals.discountAmount.toFixed(2),
@@ -118,8 +145,8 @@ export async function POST(request: NextRequest) {
         },
         meta: {
           order_id: order.id,
-          product_id: product.id,
-          quantity: requestedQuantity,
+          items_count: cartItems.length,
+          total_quantity: totalQuantity,
         },
       },
       lang: 'ar',
@@ -163,22 +190,13 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function calculateOrder(input: {
-  unitPriceBeforeVat: number;
-  quantity: number;
-  discountType?: 'percentage' | 'fixed';
-  discountValue?: number;
-  shippingAmount?: number;
-}) {
+function calculateCartOrder(cartItems: Array<{ product: any; quantity: number }>) {
   const vatRate = 0.15;
-  const subtotalBeforeDiscount = roundMoney(input.unitPriceBeforeVat * input.quantity);
-  const rawDiscount = input.discountType === 'percentage'
-    ? subtotalBeforeDiscount * ((input.discountValue || 0) / 100)
-    : (input.discountValue || 0);
-  const discountAmount = roundMoney(Math.min(subtotalBeforeDiscount, Math.max(0, rawDiscount)));
+  const subtotalBeforeDiscount = roundMoney(cartItems.reduce((sum, item) => sum + Number(item.product.price_before_vat || 0) * item.quantity, 0));
+  const discountAmount = roundMoney(subtotalBeforeDiscount * 0.10);
   const taxableAmount = roundMoney(subtotalBeforeDiscount - discountAmount);
   const vatAmount = roundMoney(taxableAmount * vatRate);
-  const shippingAmount = roundMoney(Math.max(0, input.shippingAmount || 0));
+  const shippingAmount = roundMoney(cartItems.length === 0 ? 0 : Math.max(...cartItems.map((item) => Number(item.product.shipping_amount || 0))));
   const totalAmount = roundMoney(taxableAmount + vatAmount + shippingAmount);
   return { subtotalBeforeDiscount, discountAmount, taxableAmount, vatAmount, shippingAmount, totalAmount };
 }
