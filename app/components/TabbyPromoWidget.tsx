@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useId, useState } from 'react';
+import { db } from '../../lib/db';
 
 declare global {
   interface Window {
@@ -13,20 +14,54 @@ type Props = {
   source?: 'product' | 'cart';
 };
 
-const publicKey = process.env.NEXT_PUBLIC_TABBY_PUBLIC_KEY || '';
-const merchantCode = process.env.NEXT_PUBLIC_TABBY_MERCHANT_CODE || 'kuredais';
+type TabbySettings = {
+  publicKey: string;
+  merchantCode: string;
+};
+
+const fallbackPublicKey = process.env.NEXT_PUBLIC_TABBY_PUBLIC_KEY || '';
+const fallbackMerchantCode = process.env.NEXT_PUBLIC_TABBY_MERCHANT_CODE || 'kuredais';
 
 export default function TabbyPromoWidget({ price, source = 'cart' }: Props) {
+  const id = useId().replace(/:/g, '');
+  const selector = `#tabby-promo-${id}`;
+  const [settings, setSettings] = useState<TabbySettings>({
+    publicKey: fallbackPublicKey,
+    merchantCode: fallbackMerchantCode,
+  });
+
   useEffect(() => {
-    const selector = '#TabbyPromo';
+    async function loadSettings() {
+      const { data } = await db
+        .from('store_settings')
+        .select('key,value')
+        .in('key', ['tabby_public_key', 'tabby_merchant_code']);
+
+      const rows: Record<string, string> = {};
+      (data || []).forEach((row: any) => {
+        rows[row.key] = row.value || '';
+      });
+
+      setSettings({
+        publicKey: rows.tabby_public_key || fallbackPublicKey,
+        merchantCode: rows.tabby_merchant_code || fallbackMerchantCode,
+      });
+    }
+
+    loadSettings();
+  }, []);
+
+  useEffect(() => {
     const container = document.querySelector(selector);
-    if (!container || !publicKey || price <= 0) return;
+    if (!container || !settings.publicKey || price <= 0) return;
 
     container.innerHTML = '';
 
     function renderPromo() {
       if (!window.TabbyPromo) return;
-      container.innerHTML = '';
+      const element = document.querySelector(selector);
+      if (!element) return;
+      element.innerHTML = '';
       new window.TabbyPromo({
         selector,
         currency: 'SAR',
@@ -34,8 +69,8 @@ export default function TabbyPromoWidget({ price, source = 'cart' }: Props) {
         lang: 'ar',
         source,
         shouldInheritBg: false,
-        publicKey,
-        merchantCode,
+        publicKey: settings.publicKey,
+        merchantCode: settings.merchantCode,
       });
     }
 
@@ -46,16 +81,22 @@ export default function TabbyPromoWidget({ price, source = 'cart' }: Props) {
     }
 
     const script = document.createElement('script');
-    script.src = 'https://checkout.tabby.sa/tabby-promo.js';
+    script.src = 'https://checkout.tabby.ai/tabby-promo.js';
     script.async = true;
     script.dataset.tabbyPromo = 'true';
     script.onload = renderPromo;
     document.body.appendChild(script);
-  }, [price, source]);
+  }, [price, source, selector, settings.publicKey, settings.merchantCode]);
 
-  if (!publicKey || price <= 0) {
-    return null;
+  if (price <= 0) return null;
+
+  if (!settings.publicKey) {
+    return (
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+        أضف مفتاح تابي العام من إعدادات المتجر لظهور أداة التقسيط الرسمية.
+      </div>
+    );
   }
 
-  return <div id="TabbyPromo" />;
+  return <div id={`tabby-promo-${id}`} className="overflow-hidden rounded-2xl bg-white" />;
 }
