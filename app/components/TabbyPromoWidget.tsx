@@ -81,7 +81,7 @@ export default function TabbyPromoWidget({ price, source = 'cart' }: Props) {
     }
 
     const script = document.createElement('script');
-    script.src = 'https://checkout.tabby.ai/tabby-promo.js';
+    script.src = 'https://checkout.tabby.sa/tabby-promo.js';
     script.async = true;
     script.dataset.tabbyPromo = 'true';
     script.onload = renderPromo;
