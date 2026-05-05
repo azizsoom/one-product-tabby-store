@@ -8,6 +8,7 @@ type Setting = { key: string; value: string };
 
 const defaults: Record<string, string> = {
   store_name: 'شركة المطارة',
+  store_logo_url: '',
   store_email: 'az@kco.sa',
   store_phone: '0555868221',
   store_city: 'الرياض',
@@ -28,6 +29,29 @@ export default function SettingsPage() {
       (data as Setting[]).forEach((row) => { next[row.key] = row.value || ''; });
       setSettings(next);
     }
+  }
+
+  async function uploadLogo(file: File) {
+    if (!file) return;
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml'];
+    if (!allowedTypes.includes(file.type)) {
+      setMessage('صيغة الشعار غير مدعومة. استخدم PNG أو JPG أو WEBP أو SVG.');
+      return;
+    }
+    if (file.size > 3 * 1024 * 1024) {
+      setMessage('حجم الشعار كبير. الحد الأقصى 3MB.');
+      return;
+    }
+    const extension = file.name.split('.').pop() || 'png';
+    const filePath = `logos/store-logo-${Date.now()}.${extension}`;
+    const { error } = await db.storage.from('product-images').upload(filePath, file, { cacheControl: '3600', upsert: true });
+    if (error) {
+      setMessage('فشل رفع الشعار: ' + error.message);
+      return;
+    }
+    const { data } = db.storage.from('product-images').getPublicUrl(filePath);
+    setSettings({ ...settings, store_logo_url: data.publicUrl });
+    setMessage('تم رفع الشعار. اضغط حفظ الإعدادات لاعتماده.');
   }
 
   async function saveSettings() {
@@ -51,6 +75,23 @@ export default function SettingsPage() {
             <Field label="الرقم الضريبي" value={settings.vat_number} onChange={(v) => setSettings({ ...settings, vat_number: v })} />
             <Field label="نص الفوتر" value={settings.footer_text} onChange={(v) => setSettings({ ...settings, footer_text: v })} />
           </div>
+
+          <div className="mt-6 rounded-3xl bg-stone-50 p-5 ring-1 ring-stone-200">
+            <h2 className="text-xl font-black">شعار المتجر</h2>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <label>
+                <span className="mb-2 block text-sm font-bold text-stone-700">رفع شعار من الجهاز</span>
+                <input className="input" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={(e) => e.target.files?.[0] && uploadLogo(e.target.files[0])} />
+              </label>
+              <Field label="رابط الشعار" value={settings.store_logo_url} onChange={(v) => setSettings({ ...settings, store_logo_url: v })} />
+            </div>
+            {settings.store_logo_url ? (
+              <div className="mt-4 rounded-2xl bg-white p-4 text-center ring-1 ring-stone-200">
+                <img src={settings.store_logo_url} alt="شعار المتجر" className="mx-auto max-h-28 object-contain" />
+              </div>
+            ) : null}
+          </div>
+
           {message ? <p className="mt-4 rounded-2xl bg-stone-100 p-3 text-sm">{message}</p> : null}
           <button onClick={saveSettings} className="mt-6 rounded-2xl bg-emerald-600 px-6 py-3 font-bold text-white">حفظ الإعدادات</button>
         </div>
