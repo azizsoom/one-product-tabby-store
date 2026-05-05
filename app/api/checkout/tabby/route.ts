@@ -16,17 +16,15 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json().catch(() => ({}));
+    const productId = body.productId || '';
     const customerName = body.customerName || 'عميل المتجر';
     const customerMobile = body.customerMobile || '0550000000';
     const customerEmail = body.customerEmail || 'customer@example.com';
     const requestedQuantity = Math.max(1, Math.floor(Number(body.quantity || 1)));
 
-    const { data: product, error: productError } = await db
-      .from('products')
-      .select('*')
-      .eq('is_active', true)
-      .limit(1)
-      .single();
+    let productQuery = db.from('products').select('*').eq('is_active', true).limit(1);
+    if (productId) productQuery = productQuery.eq('id', productId);
+    const { data: product, error: productError } = await productQuery.single();
 
     if (productError || !product) {
       return NextResponse.json({ error: 'No active product found.' }, { status: 400 });
@@ -97,7 +95,7 @@ export async function POST(request: NextRequest) {
               description: product.description || product.name,
               quantity: requestedQuantity,
               unit_price: Number(product.price_before_vat || 0).toFixed(2),
-              category: 'water bottle',
+              category: 'product',
             },
           ],
           tax_amount: totals.vatAmount.toFixed(2),
@@ -120,6 +118,7 @@ export async function POST(request: NextRequest) {
         },
         meta: {
           order_id: order.id,
+          product_id: product.id,
           quantity: requestedQuantity,
         },
       },
