@@ -1,12 +1,13 @@
 import Link from 'next/link';
 
 const cards = [
-  { href: '/admin/product', title: 'تعديل المنتج', desc: 'تعديل الاسم، السعر، الوصف، الشحن، والصورة.' },
+  { href: '/admin/products', title: 'إدارة المنتجات', desc: 'إضافة أكثر من منتج وتعديل السعر والكمية والصورة.' },
+  { href: '/admin/product', title: 'تعديل المنتج الأول', desc: 'تعديل سريع للمنتج الحالي والصورة والكمية.' },
   { href: '/admin/orders', title: 'الطلبات', desc: 'بحث، فلترة، تحديث الحالة، وإدارة التتبع.' },
   { href: '/admin/discounts', title: 'أكواد الخصم', desc: 'إضافة وتعطيل أكواد الخصم ونوعها وحدودها.' },
   { href: '/admin/content', title: 'محتوى الصفحة', desc: 'تعديل عناوين الصفحة والمميزات ونصوص الواجهة.' },
   { href: '/admin/policies', title: 'السياسات', desc: 'إدارة نصوص الشحن والاسترجاع والخصوصية والشروط.' },
-  { href: '/admin/settings', title: 'إعدادات المتجر', desc: 'بيانات الشركة والتواصل والرقم الضريبي.' },
+  { href: '/admin/settings', title: 'إعدادات المتجر واللوجو', desc: 'بيانات الشركة والتواصل والرقم الضريبي وشعار المتجر.' },
 ];
 
 export default function AdminHome() {
