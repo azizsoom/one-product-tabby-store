@@ -19,6 +19,11 @@ const defaults: Record<string, string> = {
   tabby_merchant_code: 'kuredais',
   tabby_api_url: 'https://api.tabby.sa/api/v2/checkout',
   tabby_mode: 'test',
+  oto_enabled: 'false',
+  oto_refresh_token: '',
+  oto_origin_city: 'Riyadh',
+  oto_origin_country: 'SA',
+  oto_volumetric_divisor: '5000',
 };
 
 export default function SettingsPage() {
@@ -39,21 +44,12 @@ export default function SettingsPage() {
   async function uploadLogo(file: File) {
     if (!file) return;
     const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml'];
-    if (!allowedTypes.includes(file.type)) {
-      setMessage('صيغة الشعار غير مدعومة. استخدم PNG أو JPG أو WEBP أو SVG.');
-      return;
-    }
-    if (file.size > 3 * 1024 * 1024) {
-      setMessage('حجم الشعار كبير. الحد الأقصى 3MB.');
-      return;
-    }
+    if (!allowedTypes.includes(file.type)) return setMessage('صيغة الشعار غير مدعومة. استخدم PNG أو JPG أو WEBP أو SVG.');
+    if (file.size > 3 * 1024 * 1024) return setMessage('حجم الشعار كبير. الحد الأقصى 3MB.');
     const extension = file.name.split('.').pop() || 'png';
     const filePath = `logos/store-logo-${Date.now()}.${extension}`;
     const { error } = await db.storage.from('product-images').upload(filePath, file, { cacheControl: '3600', upsert: true });
-    if (error) {
-      setMessage('فشل رفع الشعار: ' + error.message);
-      return;
-    }
+    if (error) return setMessage('فشل رفع الشعار: ' + error.message);
     const { data } = db.storage.from('product-images').getPublicUrl(filePath);
     setSettings({ ...settings, store_logo_url: data.publicUrl });
     setMessage('تم رفع الشعار. اضغط حفظ الإعدادات لاعتماده.');
@@ -84,17 +80,10 @@ export default function SettingsPage() {
           <div className="mt-6 rounded-3xl bg-stone-50 p-5 ring-1 ring-stone-200">
             <h2 className="text-xl font-black">شعار المتجر</h2>
             <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <label>
-                <span className="mb-2 block text-sm font-bold text-stone-700">رفع شعار من الجهاز</span>
-                <input className="input" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={(e) => e.target.files?.[0] && uploadLogo(e.target.files[0])} />
-              </label>
+              <label><span className="mb-2 block text-sm font-bold text-stone-700">رفع شعار من الجهاز</span><input className="input" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={(e) => e.target.files?.[0] && uploadLogo(e.target.files[0])} /></label>
               <Field label="رابط الشعار" value={settings.store_logo_url} onChange={(v) => setSettings({ ...settings, store_logo_url: v })} />
             </div>
-            {settings.store_logo_url ? (
-              <div className="mt-4 rounded-2xl bg-white p-4 text-center ring-1 ring-stone-200">
-                <img src={settings.store_logo_url} alt="شعار المتجر" className="mx-auto max-h-28 object-contain" />
-              </div>
-            ) : null}
+            {settings.store_logo_url ? <div className="mt-4 rounded-2xl bg-white p-4 text-center ring-1 ring-stone-200"><img src={settings.store_logo_url} alt="شعار المتجر" className="mx-auto max-h-28 object-contain" /></div> : null}
           </div>
 
           <div className="mt-6 rounded-3xl bg-violet-50 p-5 ring-1 ring-violet-100">
@@ -104,14 +93,20 @@ export default function SettingsPage() {
               <Field label="مفتاح تابي العام Public Key" value={settings.tabby_public_key} onChange={(v) => setSettings({ ...settings, tabby_public_key: v })} placeholder="pk_test_..." />
               <Field label="رمز التاجر Merchant Code" value={settings.tabby_merchant_code} onChange={(v) => setSettings({ ...settings, tabby_merchant_code: v })} placeholder="kuredais" />
               <Field label="رابط API تابي" value={settings.tabby_api_url} onChange={(v) => setSettings({ ...settings, tabby_api_url: v })} placeholder="https://api.tabby.sa/api/v2/checkout" />
-              <label>
-                <span className="mb-2 block text-sm font-bold text-stone-700">وضع الربط</span>
-                <select className="input" value={settings.tabby_mode} onChange={(e) => setSettings({ ...settings, tabby_mode: e.target.value })}>
-                  <option value="test">تجريبي test</option>
-                  <option value="live">فعلي live</option>
-                </select>
-              </label>
+              <label><span className="mb-2 block text-sm font-bold text-stone-700">وضع الربط</span><select className="input" value={settings.tabby_mode} onChange={(e) => setSettings({ ...settings, tabby_mode: e.target.value })}><option value="test">تجريبي test</option><option value="live">فعلي live</option></select></label>
               <Field label="مفتاح تابي السري Secret Key" type="password" value={settings.tabby_secret_key} onChange={(v) => setSettings({ ...settings, tabby_secret_key: v })} placeholder="sk_test_..." />
+            </div>
+          </div>
+
+          <div className="mt-6 rounded-3xl bg-sky-50 p-5 ring-1 ring-sky-100">
+            <h2 className="text-xl font-black text-sky-950">إعدادات الشحن عبر OTO</h2>
+            <p className="mt-2 text-sm leading-6 text-sky-800">OTO يربط المتجر بعدة شركات شحن ويحسب السعر حسب المدينة والوزن والأبعاد. إذا لم تضف التوكن يستخدم النظام سعر الشحن الاحتياطي من المنتج.</p>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <label className="flex items-center gap-3 rounded-2xl bg-white p-4 ring-1 ring-sky-100"><input type="checkbox" checked={settings.oto_enabled === 'true'} onChange={(e) => setSettings({ ...settings, oto_enabled: e.target.checked ? 'true' : 'false' })} /><span className="font-bold">تفعيل ربط OTO</span></label>
+              <Field label="OTO Refresh Token" type="password" value={settings.oto_refresh_token} onChange={(v) => setSettings({ ...settings, oto_refresh_token: v })} placeholder="ضع Refresh Token من لوحة OTO" />
+              <Field label="مدينة الإرسال" value={settings.oto_origin_city} onChange={(v) => setSettings({ ...settings, oto_origin_city: v })} placeholder="Riyadh" />
+              <Field label="دولة الإرسال" value={settings.oto_origin_country} onChange={(v) => setSettings({ ...settings, oto_origin_country: v })} placeholder="SA" />
+              <Field label="معامل الوزن الحجمي" type="number" value={settings.oto_volumetric_divisor} onChange={(v) => setSettings({ ...settings, oto_volumetric_divisor: v })} placeholder="5000" />
             </div>
           </div>
 
