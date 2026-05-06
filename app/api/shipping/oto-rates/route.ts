@@ -14,7 +14,9 @@ export async function POST(request: NextRequest) {
     const destinationCity = normalizeCityName(String(body.destinationCity || '').trim());
     const destinationCountry = String(body.destinationCountry || 'SA').trim() || 'SA';
     const requestedItems: RequestedItem[] = Array.isArray(body.items)
-      ? body.items.map((item: any) => ({ productId: String(item.productId || ''), quantity: Math.max(1, Math.floor(Number(item.quantity || 1))) })).filter((item: RequestedItem) => item.productId)
+      ? body.items
+          .map((item: any) => ({ productId: String(item.productId || ''), quantity: Math.max(1, Math.floor(Number(item.quantity || 1))) }))
+          .filter((item: RequestedItem) => item.productId)
       : [];
 
     if (!destinationCity) return NextResponse.json({ error: 'أدخل مدينة الشحن أولاً.' }, { status: 400 });
@@ -42,22 +44,14 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const tokenResult = await getOtoAccessToken(refreshToken);
-    if (!tokenResult.ok) {
+    const tokenData = await getOtoAccessToken(refreshToken);
+    if (!tokenData.token) {
       return NextResponse.json({
         error: 'فشل الاتصال بـ OTO: Refresh Token غير صحيح أو غير مفعل.',
-        details: tokenResult.details,
+        details: tokenData.details,
         options: [fallbackOption(packageInfo.fallbackShippingAmount)],
       }, { status: 400 });
     }
-
-    const boxes = [{
-      width: packageInfo.width,
-      length: packageInfo.length,
-      height: packageInfo.height,
-      weight: packageInfo.chargeableWeight,
-      boxName: 'Cart Box',
-    }];
 
     const ratePayload = {
       originCity,
@@ -70,13 +64,19 @@ export async function POST(request: NextRequest) {
       length: packageInfo.length,
       width: packageInfo.width,
       height: packageInfo.height,
-      boxes,
+      boxes: [{
+        width: packageInfo.width,
+        length: packageInfo.length,
+        height: packageInfo.height,
+        weight: packageInfo.chargeableWeight,
+        boxName: 'Cart Box',
+      }],
       totalDue: 0,
     };
 
     const response = await fetch('https://api.tryoto.com/rest/v2/checkOTODeliveryFee', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenResult.token}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenData.token}` },
       body: JSON.stringify(ratePayload),
     });
 
@@ -85,7 +85,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         error: extractOtoMessage(data) || 'تعذر جلب أسعار OTO.',
         details: data,
-        sent: ratePayload,
         options: [fallbackOption(packageInfo.fallbackShippingAmount)],
       }, { status: response.status });
     }
@@ -96,7 +95,7 @@ export async function POST(request: NextRequest) {
         source: 'oto-empty',
         package: packageInfo,
         options: [fallbackOption(packageInfo.fallbackShippingAmount)],
-        warning: 'OTO اتصل بنجاح لكن لم يرجع شركات شحن لهذه المدينة أو البيانات. تم عرض سعر احتياطي.',
+        warning: 'OTO اتصل بنجاح لكن لم يرجع شركات شحن. تم عرض سعر احتياطي.',
         raw: data,
       });
     }
@@ -114,16 +113,16 @@ async function getStoreSettings(): Promise<StoreSettings> {
   return settings;
 }
 
-async function getOtoAccessToken(refreshToken: string): Promise<{ ok: true; token: string } | { ok: false; details: any }> {
+async function getOtoAccessToken(refreshToken: string): Promise<{ token: string; details: any }> {
   const response = await fetch('https://api.tryoto.com/rest/v2/refreshToken', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ refresh_token: refreshToken }),
   });
   const data = await response.json().catch(() => ({}));
-  const token = data?.access_token || data?.accessToken || data?.token || data?.data?.access_token || data?.data?.accessToken;
-  if (!response.ok || !token) return { ok: false, details: data };
-  return { ok: true, token };
+  const token = data?.access_token || data?.accessToken || data?.token || data?.data?.access_token || data?.data?.accessToken || '';
+  if (!response.ok || !token) return { token: '', details: data };
+  return { token, details: data };
 }
 
 function calculatePackage(items: RequestedItem[], products: any[], divisor: number) {
@@ -187,7 +186,12 @@ function normalizeCityName(city: string) {
 }
 
 function extractOtoMessage(data: any) {
-  return data?.message || data?.error || data?.errors?.[0]?.message || data?.data?.message || '';
+  if (!data) return '';
+  if (typeof data.message === 'string') return data.message;
+  if (typeof data.error === 'string') return data.error;
+  if (Array.isArray(data.errors) && data.errors[0]?.message) return data.errors[0].message;
+  if (typeof data.data?.message === 'string') return data.data.message;
+  return '';
 }
 
 function round(value: number) { return Math.round((value + Number.EPSILON) * 100) / 100; }
