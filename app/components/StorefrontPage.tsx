@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { ShoppingBag, ShieldCheck, Trash2, Truck, Store } from 'lucide-react';
+import { ShoppingBag, ShieldCheck, Trash2, Truck, Store, X } from 'lucide-react';
 import { db } from '../../lib/db';
 import TabbyPromoWidget from './TabbyPromoWidget';
 
@@ -41,6 +41,7 @@ export default function StorefrontPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [settings, setSettings] = useState<StoreSettings>(defaultSettings);
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [cartOpen, setCartOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [customerName, setCustomerName] = useState('Test User');
   const [customerMobile, setCustomerMobile] = useState('+966500000001');
@@ -49,6 +50,11 @@ export default function StorefrontPage() {
   const [message, setMessage] = useState('');
 
   useEffect(() => { loadInitialData(); }, []);
+
+  useEffect(() => {
+    document.body.style.overflow = cartOpen ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [cartOpen]);
 
   async function loadInitialData() {
     setLoading(true);
@@ -86,6 +92,7 @@ export default function StorefrontPage() {
       }
       return [...items, { product, quantity: 1 }];
     });
+    setCartOpen(true);
   }
 
   function updateCartQuantity(productId: string, nextQuantity: number) {
@@ -109,6 +116,7 @@ export default function StorefrontPage() {
     if (cart.length === 0) {
       setSaving(false);
       setMessage('السلة فارغة. أضف منتجًا واحدًا على الأقل.');
+      setCartOpen(true);
       return;
     }
 
@@ -170,9 +178,9 @@ export default function StorefrontPage() {
               <p className="text-xs text-stone-500 md:text-sm">{settings.store_city} · دفع آمن عبر تابي</p>
             </div>
           </div>
-          <a href="#cart-box" className="relative rounded-2xl bg-stone-950 px-4 py-3 text-sm font-bold text-white shadow-sm md:px-6">
+          <button type="button" onClick={() => setCartOpen(true)} className="relative rounded-2xl bg-stone-950 px-4 py-3 text-sm font-bold text-white shadow-sm md:px-6">
             السلة <span className="mr-2 rounded-full bg-emerald-500 px-2 py-0.5 text-xs">{totalQuantity}</span>
-          </a>
+          </button>
         </div>
       </header>
 
@@ -182,8 +190,10 @@ export default function StorefrontPage() {
             <ShieldCheck size={18} /> متجر متعدد المنتجات مربوط بتابي
           </div>
           <h2 className="mt-5 text-3xl font-black leading-tight md:text-5xl">اختر منتجاتك واجمعها في طلب واحد</h2>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-stone-200 md:text-base">أضف أكثر من منتج للسلة، عدّل الكميات، وشاهد التقسيط الرسمي من تابي يتحدث مع إجمالي الطلب.</p>
+          <p className="mt-3 max-w-2xl text-sm leading-7 text-stone-200 md:text-base">أضف أكثر من منتج للسلة، ثم افتح السلة بالأعلى وعدّل الكميات وأكمل الدفع.</p>
         </div>
+
+        {message && !cartOpen ? <p className="mb-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900 ring-1 ring-amber-200">{message}</p> : null}
 
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6">
           {products.map((product) => {
@@ -212,69 +222,91 @@ export default function StorefrontPage() {
             );
           })}
         </div>
-
-        <section id="cart-box" className="mt-8 grid gap-6 lg:grid-cols-[1fr_420px]">
-          <div className="rounded-[2rem] bg-white p-4 shadow-sm ring-1 ring-stone-200 md:p-6">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-2xl font-black">سلة المشتريات</h2>
-              <span className="rounded-full bg-stone-100 px-3 py-1 text-sm font-bold text-stone-600">{totalQuantity} منتج</span>
-            </div>
-
-            {cart.length === 0 ? <p className="mt-4 rounded-2xl bg-stone-100 p-4 text-sm text-stone-600">السلة فارغة. اضغط إضافة للسلة على المنتجات التي تريدها.</p> : (
-              <div className="mt-4 space-y-3">
-                {cart.map((item) => (
-                  <div key={item.product.id} className="grid gap-3 rounded-3xl border border-stone-200 p-3 md:grid-cols-[84px_1fr_auto] md:items-center">
-                    <div className="h-20 w-20 overflow-hidden rounded-2xl bg-stone-100">
-                      {item.product.image_url ? <img src={item.product.image_url} alt={item.product.name} className="h-full w-full object-cover" /> : null}
-                    </div>
-                    <div>
-                      <h3 className="font-black">{item.product.name}</h3>
-                      <p className="mt-1 text-sm text-stone-500">سعر الحبة قبل الضريبة: {Number(item.product.price_before_vat || 0).toFixed(2)} ريال</p>
-                      <p className="text-sm text-stone-500">المتوفر: {Number(item.product.stock_quantity || 0)}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button type="button" onClick={() => updateCartQuantity(item.product.id, item.quantity - 1)} className="h-11 w-11 rounded-2xl bg-stone-100 text-lg font-black">-</button>
-                      <input className="input max-w-20 text-center" type="number" min="1" max={Number(item.product.stock_quantity || 1)} value={item.quantity} onChange={(e) => updateCartQuantity(item.product.id, Number(e.target.value))} />
-                      <button type="button" onClick={() => updateCartQuantity(item.product.id, item.quantity + 1)} className="h-11 w-11 rounded-2xl bg-stone-100 text-lg font-black">+</button>
-                      <button type="button" onClick={() => removeFromCart(item.product.id)} className="h-11 w-11 rounded-2xl bg-red-50 text-red-600"><Trash2 size={18} className="mx-auto" /></button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="mt-6 rounded-3xl bg-stone-50 p-4">
-              <h3 className="font-black">بيانات العميل</h3>
-              <div className="mt-3 grid gap-3 md:grid-cols-3">
-                <input className="input" placeholder="اسم العميل" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
-                <input className="input" placeholder="رقم الجوال" value={customerMobile} onChange={(e) => setCustomerMobile(e.target.value)} />
-                <input className="input" placeholder="البريد الإلكتروني" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} />
-              </div>
-            </div>
-          </div>
-
-          <aside className="h-fit rounded-[2rem] bg-white p-5 shadow-sm ring-1 ring-stone-200 md:p-6 lg:sticky lg:top-24">
-            <h2 className="text-2xl font-black">ملخص الطلب</h2>
-            <div className="mt-5 space-y-3 text-sm">
-              <Row label="عدد المنتجات" value={`${totalQuantity}`} />
-              <Row label="المجموع قبل الخصم" value={`${preview.subtotalBeforeDiscount.toFixed(2)} ريال`} />
-              <Row label="خصم تجريبي 10%" value={`-${preview.discountAmount.toFixed(2)} ريال`} />
-              <Row label="الصافي الخاضع للضريبة" value={`${preview.taxableAmount.toFixed(2)} ريال`} />
-              <Row label="ضريبة القيمة المضافة 15%" value={`${preview.vatAmount.toFixed(2)} ريال`} />
-              <Row label="الشحن" value={preview.shippingAmount === 0 ? 'مجاني' : `${preview.shippingAmount.toFixed(2)} ريال`} />
-              <div className="mt-4 flex items-center justify-between rounded-3xl bg-stone-950 px-5 py-4 text-white">
-                <span>الإجمالي</span><strong className="text-2xl">{preview.totalAmount.toFixed(2)} ريال</strong>
-              </div>
-              <TabbyPromoWidget price={preview.totalAmount} source="cart" />
-            </div>
-            {message ? <p className="mt-4 rounded-2xl bg-stone-100 p-3 text-sm">{message}</p> : null}
-            <button onClick={startTabbyCheckout} disabled={saving || cart.length === 0} className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-6 py-4 text-lg font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50">
-              <ShoppingBag size={20} /> {saving ? 'جاري تحويلك إلى تابي...' : 'الدفع عبر تابي'}
-            </button>
-            <div className="mt-4 flex items-center justify-center gap-2 text-xs text-stone-500"><Truck size={16} /> شركة الشحن متعددة حسب المتوفر</div>
-          </aside>
-        </section>
       </section>
+
+      {cartOpen ? (
+        <div className="fixed inset-0 z-50">
+          <button aria-label="إغلاق السلة" className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setCartOpen(false)} />
+          <aside className="absolute left-0 top-0 flex h-full w-full max-w-md flex-col bg-white shadow-2xl md:rounded-r-[2rem]" dir="rtl">
+            <div className="flex items-center justify-between border-b border-stone-200 p-4">
+              <div>
+                <h2 className="text-2xl font-black">سلة المشتريات</h2>
+                <p className="text-sm text-stone-500">{totalQuantity} منتج في السلة</p>
+              </div>
+              <button onClick={() => setCartOpen(false)} className="flex h-11 w-11 items-center justify-center rounded-2xl bg-stone-100 text-stone-700"><X size={22} /></button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4">
+              {cart.length === 0 ? (
+                <div className="rounded-3xl bg-stone-50 p-6 text-center ring-1 ring-stone-200">
+                  <ShoppingBag className="mx-auto mb-3 text-stone-400" size={38} />
+                  <p className="font-black">السلة فارغة</p>
+                  <p className="mt-1 text-sm text-stone-500">أضف المنتجات من الصفحة الرئيسية.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {cart.map((item) => (
+                    <div key={item.product.id} className="rounded-3xl border border-stone-200 p-3">
+                      <div className="flex gap-3">
+                        <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-stone-100">
+                          {item.product.image_url ? <img src={item.product.image_url} alt={item.product.name} className="h-full w-full object-cover" /> : null}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h3 className="line-clamp-2 font-black">{item.product.name}</h3>
+                          <p className="mt-1 text-sm text-stone-500">{Number(item.product.price_before_vat || 0).toFixed(2)} ريال قبل الضريبة</p>
+                          <p className="text-xs text-stone-500">المتوفر: {Number(item.product.stock_quantity || 0)}</p>
+                        </div>
+                        <button type="button" onClick={() => removeFromCart(item.product.id)} className="h-10 w-10 shrink-0 rounded-2xl bg-red-50 text-red-600"><Trash2 size={17} className="mx-auto" /></button>
+                      </div>
+                      <div className="mt-3 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <button type="button" onClick={() => updateCartQuantity(item.product.id, item.quantity - 1)} className="h-10 w-10 rounded-xl bg-stone-100 text-lg font-black">-</button>
+                          <input className="input max-w-20 text-center" type="number" min="1" max={Number(item.product.stock_quantity || 1)} value={item.quantity} onChange={(e) => updateCartQuantity(item.product.id, Number(e.target.value))} />
+                          <button type="button" onClick={() => updateCartQuantity(item.product.id, item.quantity + 1)} className="h-10 w-10 rounded-xl bg-stone-100 text-lg font-black">+</button>
+                        </div>
+                        <strong>{(Number(item.product.price_before_vat || 0) * item.quantity).toFixed(2)} ريال</strong>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-4 rounded-3xl bg-stone-50 p-4 ring-1 ring-stone-200">
+                <h3 className="font-black">بيانات العميل</h3>
+                <div className="mt-3 grid gap-3">
+                  <input className="input" placeholder="اسم العميل" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+                  <input className="input" placeholder="رقم الجوال" value={customerMobile} onChange={(e) => setCustomerMobile(e.target.value)} />
+                  <input className="input" placeholder="البريد الإلكتروني" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} />
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-3xl bg-white p-4 ring-1 ring-stone-200">
+                <h3 className="font-black">ملخص الطلب</h3>
+                <div className="mt-3 space-y-2 text-sm">
+                  <Row label="المجموع قبل الخصم" value={`${preview.subtotalBeforeDiscount.toFixed(2)} ريال`} />
+                  <Row label="خصم تجريبي 10%" value={`-${preview.discountAmount.toFixed(2)} ريال`} />
+                  <Row label="الصافي الخاضع للضريبة" value={`${preview.taxableAmount.toFixed(2)} ريال`} />
+                  <Row label="ضريبة القيمة المضافة 15%" value={`${preview.vatAmount.toFixed(2)} ريال`} />
+                  <Row label="الشحن" value={preview.shippingAmount === 0 ? 'مجاني' : `${preview.shippingAmount.toFixed(2)} ريال`} />
+                  <div className="mt-3 flex items-center justify-between rounded-2xl bg-stone-950 px-4 py-3 text-white">
+                    <span>الإجمالي</span><strong className="text-xl">{preview.totalAmount.toFixed(2)} ريال</strong>
+                  </div>
+                </div>
+                <div className="mt-3"><TabbyPromoWidget price={preview.totalAmount} source="cart" /></div>
+              </div>
+
+              {message ? <p className="mt-4 rounded-2xl bg-amber-50 p-3 text-sm text-amber-900 ring-1 ring-amber-200">{message}</p> : null}
+            </div>
+
+            <div className="border-t border-stone-200 bg-white p-4">
+              <button onClick={startTabbyCheckout} disabled={saving || cart.length === 0} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-6 py-4 text-lg font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50">
+                <ShoppingBag size={20} /> {saving ? 'جاري تحويلك إلى تابي...' : 'الدفع عبر تابي'}
+              </button>
+              <div className="mt-3 flex items-center justify-center gap-2 text-xs text-stone-500"><Truck size={16} /> شركة الشحن متعددة حسب المتوفر</div>
+            </div>
+          </aside>
+        </div>
+      ) : null}
 
       <footer className="mx-auto max-w-7xl px-4 pb-10 text-center text-sm text-stone-600">
         <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-stone-200">
