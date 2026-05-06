@@ -9,12 +9,26 @@ const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://one-product-tabby-s
 
 const db = createClient(supabaseUrl, supabaseKey);
 
-type RequestedItem = {
-  productId: string;
-  quantity: number;
+type RequestedItem = { productId: string; quantity: number };
+type StoreSettings = Record<string, string>;
+type DiscountCode = {
+  id: string;
+  code: string;
+  type: 'percentage' | 'fixed';
+  value: number;
+  max_discount_amount: number | null;
+  is_active: boolean;
+  usage_limit: number | null;
+  used_count: number;
 };
 
-type StoreSettings = Record<string, string>;
+type ShippingInfo = {
+  fulfillmentType?: 'shipping' | 'pickup';
+  city?: string;
+  district?: string;
+  address?: string;
+  notes?: string;
+};
 
 export async function POST(request: NextRequest) {
   try {
@@ -31,6 +45,9 @@ export async function POST(request: NextRequest) {
     const customerName = body.customerName || 'عميل المتجر';
     const customerMobile = body.customerMobile || '0550000000';
     const customerEmail = body.customerEmail || 'customer@example.com';
+    const discountCode = String(body.discountCode || '').trim().toUpperCase();
+    const shippingInfo: ShippingInfo = body.shippingInfo || {};
+    const fulfillmentType = shippingInfo.fulfillmentType === 'pickup' ? 'pickup' : 'shipping';
 
     const requestedItems: RequestedItem[] = Array.isArray(body.items)
       ? body.items.map((item: any) => ({
@@ -63,15 +80,19 @@ export async function POST(request: NextRequest) {
     const cartItems = requestedItems.map((requested) => {
       const product = products.find((item: any) => item.id === requested.productId);
       if (!product) throw new Error('Product not found in cart.');
-
       const stockQuantity = Number(product.stock_quantity ?? 0);
       if (stockQuantity <= 0) throw new Error(`Product is out of stock: ${product.name}`);
       if (requested.quantity > stockQuantity) throw new Error(`Requested quantity is more than stock for ${product.name}. Available: ${stockQuantity}`);
-
       return { product, quantity: requested.quantity };
     });
 
-    const totals = calculateCartOrder(cartItems);
+    const subtotalBeforeDiscount = roundMoney(cartItems.reduce((sum, item) => sum + Number(item.product.price_before_vat || 0) * item.quantity, 0));
+    const discount = discountCode ? await getValidDiscount(discountCode, subtotalBeforeDiscount) : null;
+    if (discountCode && !discount) {
+      return NextResponse.json({ error: 'كود الخصم غير صحيح أو غير فعال أو تجاوز حد الاستخدام.' }, { status: 400 });
+    }
+
+    const totals = calculateCartOrder(cartItems, discount, fulfillmentType);
     const mainProductName = cartItems.length === 1 ? cartItems[0].product.name : `طلب من المتجر - ${cartItems.length} منتجات`;
     const totalQuantity = cartItems.reduce((sum, item) => sum + item.quantity, 0);
 
@@ -86,7 +107,7 @@ export async function POST(request: NextRequest) {
         quantity: totalQuantity,
         unit_price_before_vat: Number(cartItems[0].product.price_before_vat || 0),
         subtotal_before_discount: totals.subtotalBeforeDiscount,
-        discount_code: 'TEST10',
+        discount_code: discount?.code || null,
         discount_amount: totals.discountAmount,
         taxable_amount: totals.taxableAmount,
         vat_rate: 0.15,
@@ -103,6 +124,14 @@ export async function POST(request: NextRequest) {
             quantity: item.quantity,
             unit_price_before_vat: Number(item.product.price_before_vat || 0),
           })),
+          shipping_info: {
+            fulfillment_type: fulfillmentType,
+            city: shippingInfo.city || '',
+            district: shippingInfo.district || '',
+            address: shippingInfo.address || '',
+            notes: shippingInfo.notes || '',
+          },
+          discount: discount ? { code: discount.code, type: discount.type, value: discount.value } : null,
         }),
       })
       .select('*')
@@ -112,17 +141,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: orderError?.message || 'Order creation failed.' }, { status: 500 });
     }
 
+    if (discount) {
+      await db.from('discount_codes').update({ used_count: Number(discount.used_count || 0) + 1 }).eq('id', discount.id);
+    }
+
     const amount = totals.totalAmount.toFixed(2);
     const checkoutPayload = {
       payment: {
         amount,
         currency: 'SAR',
         description: mainProductName,
-        buyer: {
-          name: customerName,
-          email: customerEmail,
-          phone: normalizeSaudiPhone(customerMobile),
-        },
+        buyer: { name: customerName, email: customerEmail, phone: normalizeSaudiPhone(customerMobile) },
         order: {
           reference_id: order.id,
           items: cartItems.map((item) => ({
@@ -146,15 +175,11 @@ export async function POST(request: NextRequest) {
         },
         order_history: [],
         shipping_address: {
-          city: 'Riyadh',
-          address: 'Riyadh',
+          city: shippingInfo.city || 'Riyadh',
+          address: [shippingInfo.district, shippingInfo.address].filter(Boolean).join(' - ') || 'Riyadh',
           zip: '00000',
         },
-        meta: {
-          order_id: order.id,
-          items_count: cartItems.length,
-          total_quantity: totalQuantity,
-        },
+        meta: { order_id: order.id, items_count: cartItems.length, total_quantity: totalQuantity, fulfillment_type: fulfillmentType },
       },
       lang: 'ar',
       merchant_code: merchantCode,
@@ -167,15 +192,11 @@ export async function POST(request: NextRequest) {
 
     const tabbyResponse = await fetch(tabbyApiUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${tabbySecretKey}`,
-      },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tabbySecretKey}` },
       body: JSON.stringify(checkoutPayload),
     });
 
     const tabbyData = await tabbyResponse.json().catch(() => ({}));
-
     if (!tabbyResponse.ok) {
       return NextResponse.json({ error: 'Tabby checkout failed.', details: tabbyData }, { status: tabbyResponse.status });
     }
@@ -183,13 +204,8 @@ export async function POST(request: NextRequest) {
     const paymentId = tabbyData?.payment?.id || tabbyData?.id || null;
     const webUrl = tabbyData?.configuration?.available_products?.installments?.[0]?.web_url || tabbyData?.web_url;
 
-    if (paymentId) {
-      await db.from('orders').update({ tabby_payment_id: paymentId }).eq('id', order.id);
-    }
-
-    if (!webUrl) {
-      return NextResponse.json({ error: 'Tabby did not return web_url.', details: tabbyData }, { status: 500 });
-    }
+    if (paymentId) await db.from('orders').update({ tabby_payment_id: paymentId }).eq('id', order.id);
+    if (!webUrl) return NextResponse.json({ error: 'Tabby did not return web_url.', details: tabbyData }, { status: 500 });
 
     return NextResponse.json({ webUrl, orderId: order.id, tabbyPaymentId: paymentId });
   } catch (error: any) {
@@ -200,27 +216,33 @@ export async function POST(request: NextRequest) {
 async function getStoreSettings(): Promise<StoreSettings> {
   const { data } = await db.from('store_settings').select('key,value');
   const settings: StoreSettings = {};
-  (data || []).forEach((row: any) => {
-    settings[row.key] = row.value || '';
-  });
+  (data || []).forEach((row: any) => { settings[row.key] = row.value || ''; });
   return settings;
 }
 
-function calculateCartOrder(cartItems: Array<{ product: any; quantity: number }>) {
+async function getValidDiscount(code: string, subtotal: number): Promise<DiscountCode | null> {
+  const { data } = await db.from('discount_codes').select('*').eq('code', code).single();
+  const discount = data as DiscountCode | null;
+  if (!discount || !discount.is_active) return null;
+  if (discount.usage_limit !== null && Number(discount.used_count || 0) >= Number(discount.usage_limit)) return null;
+  if (Number(discount.value || 0) <= 0 || subtotal <= 0) return null;
+  return discount;
+}
+
+function calculateCartOrder(cartItems: Array<{ product: any; quantity: number }>, discount: DiscountCode | null, fulfillmentType: 'shipping' | 'pickup') {
   const vatRate = 0.15;
   const subtotalBeforeDiscount = roundMoney(cartItems.reduce((sum, item) => sum + Number(item.product.price_before_vat || 0) * item.quantity, 0));
-  const discountAmount = roundMoney(subtotalBeforeDiscount * 0.10);
+  const rawDiscount = discount ? (discount.type === 'percentage' ? subtotalBeforeDiscount * (Number(discount.value || 0) / 100) : Number(discount.value || 0)) : 0;
+  const cappedDiscount = discount?.max_discount_amount ? Math.min(rawDiscount, Number(discount.max_discount_amount)) : rawDiscount;
+  const discountAmount = roundMoney(Math.min(subtotalBeforeDiscount, Math.max(0, cappedDiscount)));
   const taxableAmount = roundMoney(subtotalBeforeDiscount - discountAmount);
   const vatAmount = roundMoney(taxableAmount * vatRate);
-  const shippingAmount = roundMoney(cartItems.length === 0 ? 0 : Math.max(...cartItems.map((item) => Number(item.product.shipping_amount || 0))));
+  const shippingAmount = fulfillmentType === 'pickup' ? 0 : roundMoney(cartItems.length === 0 ? 0 : Math.max(...cartItems.map((item) => Number(item.product.shipping_amount || 0))));
   const totalAmount = roundMoney(taxableAmount + vatAmount + shippingAmount);
   return { subtotalBeforeDiscount, discountAmount, taxableAmount, vatAmount, shippingAmount, totalAmount };
 }
 
-function roundMoney(value: number) {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
-}
-
+function roundMoney(value: number) { return Math.round((value + Number.EPSILON) * 100) / 100; }
 function normalizeSaudiPhone(phone: string) {
   const digits = String(phone || '').replace(/\D/g, '');
   if (digits.startsWith('966')) return '+' + digits;
