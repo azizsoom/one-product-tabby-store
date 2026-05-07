@@ -104,7 +104,8 @@ export async function POST(request: NextRequest) {
         cities: cityInfo,
         package: packageInfo,
         options: [fallbackOption(packageInfo.fallbackShippingAmount)],
-        warning: 'OTO اتصل بنجاح لكن لم يرجع شركات شحن. تم عرض سعر احتياطي.',
+        warning: 'OTO اتصل بنجاح لكن لم يرجع شركات شحن. تم عرض سعر احتياطي. تأكد أن حساب OTO يدعم OTO Rates أو جرّب مدينة ووزن مختلفين.',
+        debug: { responseKeys: Object.keys(data || {}), success: data?.success ?? null, message: extractOtoMessage(data) },
         raw: data,
       });
     }
@@ -165,18 +166,61 @@ function calculatePackage(items: RequestedItem[], products: any[], divisor: numb
 }
 
 function normalizeOtoOptions(data: any) {
-  const candidates = data?.deliveryOptions || data?.availableDeliveryOptions || data?.data || data?.options || data?.deliveryOptionsList || data?.deliveryOptionsPrices || [];
-  const list = Array.isArray(candidates) ? candidates : Array.isArray(candidates?.deliveryOptions) ? candidates.deliveryOptions : [];
-  return list.map((item: any, index: number) => ({
-    id: String(item.deliveryOptionId || item.id || item.optionId || index),
-    deliveryOptionId: item.deliveryOptionId || item.id || item.optionId || null,
-    company: item.deliveryCompanyName || item.deliveryOptionName || item.companyName || item.name || item.deliveryCompany || 'شركة شحن',
-    service: item.serviceType || item.serviceName || item.type || 'خدمة شحن',
-    price: Number(item.price || item.deliveryFee || item.fee || item.amount || item.total || 0),
-    currency: item.currency || 'SAR',
-    eta: item.avgDeliveryTime || item.estimatedDeliveryTime || item.eta || item.deliveryTime || item.duration || '',
-    raw: item,
-  })).filter((item: any) => Number(item.price || 0) >= 0);
+  const candidates =
+    data?.deliveryCompany ||
+    data?.deliveryCompanies ||
+    data?.deliveryOptions ||
+    data?.availableDeliveryOptions ||
+    data?.options ||
+    data?.deliveryOptionsList ||
+    data?.deliveryOptionsPrices ||
+    data?.data?.deliveryCompany ||
+    data?.data?.deliveryCompanies ||
+    data?.data?.deliveryOptions ||
+    data?.data?.options ||
+    data?.data ||
+    [];
+
+  const list = Array.isArray(candidates)
+    ? candidates
+    : Array.isArray(candidates?.deliveryCompany)
+      ? candidates.deliveryCompany
+      : Array.isArray(candidates?.deliveryOptions)
+        ? candidates.deliveryOptions
+        : [];
+
+  return list.map((item: any, index: number) => {
+    const price = Number(item.price ?? item.deliveryFee ?? item.fee ?? item.amount ?? item.total ?? item.totalPrice ?? 0);
+    return {
+      id: String(item.deliveryOptionId ?? item.id ?? item.optionId ?? `${item.deliveryCompanyName || item.deliveryOptionName || 'oto'}-${index}`),
+      deliveryOptionId: item.deliveryOptionId ?? item.id ?? item.optionId ?? null,
+      company: cleanCompanyName(item.deliveryCompanyName || item.deliveryOptionName || item.companyName || item.name || item.deliveryCompany || 'شركة شحن'),
+      service: item.serviceType || item.serviceName || item.type || item.deliveryOptionName || 'خدمة شحن',
+      price,
+      currency: item.currency || data?.currency || 'SAR',
+      eta: item.avgDeliveryTime || item.estimatedDeliveryTime || item.eta || item.deliveryTime || item.duration || '',
+      logo: item.logo || '',
+      raw: item,
+    };
+  }).filter((item: any) => item.deliveryOptionId !== null && Number.isFinite(item.price) && item.price >= 0);
+}
+
+function cleanCompanyName(value: string) {
+  const map: Record<string, string> = {
+    jtexpress: 'J&T Express',
+    jandt: 'J&T Express',
+    saudiPost: 'SPL',
+    sms: 'SMSA',
+    smsa: 'SMSA',
+    aramex: 'Aramex',
+    ups: 'UPS',
+    dhl: 'DHL',
+    imile: 'iMile',
+    aymakan: 'Aymakan',
+    kwickbox: 'Kwick Box',
+  };
+  const key = String(value || '').trim();
+  return map[key] || key;
 }
 
 function fallbackOption(price: number) {
