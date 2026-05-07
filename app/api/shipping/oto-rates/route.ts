@@ -7,25 +7,29 @@ const db = createClient(supabaseUrl, supabaseKey);
 
 type RequestedItem = { productId: string; quantity: number };
 type StoreSettings = Record<string, string>;
+type NormalizedCity = { input: string; city: string; matched: boolean };
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
-    const destinationCity = normalizeCityName(String(body.destinationCity || '').trim());
+    const destinationCityInput = String(body.destinationCity || '').trim();
     const destinationCountry = String(body.destinationCountry || 'SA').trim() || 'SA';
+    const destinationCityInfo = normalizeOtoCity(destinationCityInput);
+    const destinationCity = destinationCityInfo.city;
     const requestedItems: RequestedItem[] = Array.isArray(body.items)
       ? body.items
           .map((item: any) => ({ productId: String(item.productId || ''), quantity: Math.max(1, Math.floor(Number(item.quantity || 1))) }))
           .filter((item: RequestedItem) => item.productId)
       : [];
 
-    if (!destinationCity) return NextResponse.json({ error: 'أدخل مدينة الشحن أولاً.' }, { status: 400 });
+    if (!destinationCityInput) return NextResponse.json({ error: 'أدخل مدينة الشحن أولاً.' }, { status: 400 });
     if (requestedItems.length === 0) return NextResponse.json({ error: 'السلة فارغة.' }, { status: 400 });
 
     const settings = await getStoreSettings();
     const otoEnabled = settings.oto_enabled === 'true';
     const refreshToken = settings.oto_refresh_token || '';
-    const originCity = normalizeCityName(settings.oto_origin_city || 'Riyadh');
+    const originCityInfo = normalizeOtoCity(settings.oto_origin_city || 'Riyadh');
+    const originCity = originCityInfo.city || 'Riyadh';
     const originCountry = settings.oto_origin_country || 'SA';
     const fallbackDivisor = Number(settings.oto_volumetric_divisor || 5000);
 
@@ -34,10 +38,12 @@ export async function POST(request: NextRequest) {
     if (error || !products || products.length === 0) return NextResponse.json({ error: 'تعذر قراءة المنتجات.' }, { status: 400 });
 
     const packageInfo = calculatePackage(requestedItems, products as any[], fallbackDivisor);
+    const cityInfo = buildCityInfo(originCityInfo, destinationCityInfo);
 
     if (!otoEnabled || !refreshToken) {
       return NextResponse.json({
         source: 'fallback',
+        cities: cityInfo,
         package: packageInfo,
         options: [fallbackOption(packageInfo.fallbackShippingAmount)],
         warning: 'لم يتم تفعيل OTO أو إضافة Refresh Token. تم عرض سعر احتياطي.',
@@ -48,6 +54,7 @@ export async function POST(request: NextRequest) {
     if (!tokenData.token) {
       return NextResponse.json({
         error: 'فشل الاتصال بـ OTO: Refresh Token غير صحيح أو غير مفعل.',
+        cities: cityInfo,
         details: tokenData.details,
         options: [fallbackOption(packageInfo.fallbackShippingAmount)],
       }, { status: 400 });
@@ -84,6 +91,7 @@ export async function POST(request: NextRequest) {
     if (!response.ok) {
       return NextResponse.json({
         error: extractOtoMessage(data) || 'تعذر جلب أسعار OTO.',
+        cities: cityInfo,
         details: data,
         options: [fallbackOption(packageInfo.fallbackShippingAmount)],
       }, { status: response.status });
@@ -93,6 +101,7 @@ export async function POST(request: NextRequest) {
     if (options.length === 0) {
       return NextResponse.json({
         source: 'oto-empty',
+        cities: cityInfo,
         package: packageInfo,
         options: [fallbackOption(packageInfo.fallbackShippingAmount)],
         warning: 'OTO اتصل بنجاح لكن لم يرجع شركات شحن. تم عرض سعر احتياطي.',
@@ -100,7 +109,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    return NextResponse.json({ source: 'oto', package: packageInfo, options, raw: data });
+    return NextResponse.json({ source: 'oto', cities: cityInfo, package: packageInfo, options, raw: data });
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || 'خطأ غير متوقع في حساب الشحن.' }, { status: 500 });
   }
@@ -174,15 +183,94 @@ function fallbackOption(price: number) {
   return { id: 'fallback-shipping', deliveryOptionId: null, company: 'الشحن الافتراضي', service: 'سعر احتياطي', price: Number(price || 0), currency: 'SAR', eta: 'حسب المتوفر', raw: null };
 }
 
-function normalizeCityName(city: string) {
-  const value = city.trim();
-  const map: Record<string, string> = {
-    'الرياض': 'Riyadh', 'جدة': 'Jeddah', 'جده': 'Jeddah', 'مكة': 'Makkah', 'مكه': 'Makkah', 'المدينة': 'Madinah', 'المدينه': 'Madinah',
-    'الدمام': 'Dammam', 'الخبر': 'Khobar', 'بريدة': 'Buraidah', 'بريده': 'Buraidah', 'عنيزة': 'Unaizah', 'عنيزه': 'Unaizah',
-    'الرس': 'Ar Rass', 'حائل': 'Hail', 'الطائف': 'Taif', 'تبوك': 'Tabuk', 'أبها': 'Abha', 'ابها': 'Abha', 'خميس مشيط': 'Khamis Mushait',
-    'جازان': 'Jazan', 'جيزان': 'Jazan', 'نجران': 'Najran', 'ينبع': 'Yanbu', 'الجبيل': 'Jubail', 'الأحساء': 'Al Ahsa', 'الاحساء': 'Al Ahsa',
+function normalizeOtoCity(city: string): NormalizedCity {
+  const input = String(city || '').trim();
+  if (!input) return { input, city: '', matched: false };
+
+  const key = normalizeCityKey(input);
+  const cityMap: Record<string, string> = {
+    'riyadh': 'Riyadh', 'alriyadh': 'Riyadh', 'arriyadh': 'Riyadh', 'الرياض': 'Riyadh', 'رياض': 'Riyadh',
+    'jeddah': 'Jeddah', 'jedda': 'Jeddah', 'jiddah': 'Jeddah', 'jiddahcity': 'Jeddah', 'جدة': 'Jeddah', 'جده': 'Jeddah',
+    'makkah': 'Makkah', 'mecca': 'Makkah', 'مكة': 'Makkah', 'مكه': 'Makkah', 'مكةالمكرمة': 'Makkah', 'مكهالمكرمه': 'Makkah',
+    'madinah': 'Madinah', 'medina': 'Madinah', 'almadinah': 'Madinah', 'المدينة': 'Madinah', 'المدينه': 'Madinah', 'المدينةالمنورة': 'Madinah', 'المدينهالمنوره': 'Madinah',
+    'dammam': 'Dammam', 'aldammam': 'Dammam', 'الدمام': 'Dammam',
+    'khobar': 'Khobar', 'alkhobar': 'Khobar', 'al khobar': 'Khobar', 'الخبر': 'Khobar',
+    'dhahran': 'Dhahran', 'aldhahran': 'Dhahran', 'الظهران': 'Dhahran',
+    'qatif': 'Qatif', 'alqatif': 'Qatif', 'القطيف': 'Qatif',
+    'jubail': 'Jubail', 'aljubail': 'Jubail', 'الجبيل': 'Jubail',
+    'alahsa': 'Al Ahsa', 'al ahsa': 'Al Ahsa', 'ahsa': 'Al Ahsa', 'hassa': 'Al Ahsa', 'الأحساء': 'Al Ahsa', 'الاحساء': 'Al Ahsa', 'الاحسا': 'Al Ahsa',
+    'hofuf': 'Hofuf', 'alhofuf': 'Hofuf', 'الهفوف': 'Hofuf',
+    'taif': 'Taif', 'altaif': 'Taif', 'الطائف': 'Taif',
+    'buraidah': 'Buraidah', 'buraydah': 'Buraidah', 'buraydahcity': 'Buraidah', 'بريدة': 'Buraidah', 'بريده': 'Buraidah', 'القصيم': 'Buraidah', 'القصيمبريدة': 'Buraidah',
+    'unaizah': 'Unaizah', 'unayzah': 'Unaizah', 'onaizah': 'Unaizah', 'عنيزة': 'Unaizah', 'عنيزه': 'Unaizah',
+    'arrass': 'ar rass', 'ar rass': 'ar rass', 'alrass': 'ar rass', 'al rass': 'ar rass', 'rass': 'ar rass', 'الرس': 'ar rass',
+    'hail': 'Hail', 'ha il': 'Hail', ' حائل': 'Hail', 'حائل': 'Hail', 'حايل': 'Hail',
+    'tabuk': 'Tabuk', 'تبوك': 'Tabuk',
+    'abha': 'Abha', 'ابها': 'Abha', 'أبها': 'Abha',
+    'khamismushait': 'Khamis Mushait', 'khamis mushait': 'Khamis Mushait', 'خميسمشيط': 'Khamis Mushait', 'خميس مشيط': 'Khamis Mushait',
+    'jazan': 'Jazan', 'gizan': 'Jazan', 'جيزان': 'Jazan', 'جازان': 'Jazan',
+    'najran': 'Najran', 'نجران': 'Najran',
+    'yanbu': 'Yanbu', 'ينبع': 'Yanbu',
+    'alkharj': 'Al Kharj', 'al kharj': 'Al Kharj', 'kharj': 'Al Kharj', 'الخرج': 'Al Kharj',
+    'dawadmi': 'Dawadmi', 'aldawadmi': 'Dawadmi', 'الدوادمي': 'Dawadmi',
+    'majmaah': 'Al Majmaah', 'almajmaah': 'Al Majmaah', 'al majmaah': 'Al Majmaah', 'المجمعة': 'Al Majmaah', 'المجمعه': 'Al Majmaah',
+    'zulfi': 'Zulfi', 'az zulfi': 'Zulfi', 'الزلفي': 'Zulfi',
+    'wadiaddawasir': 'Wadi ad-Dawasir', 'wadi ad dawasir': 'Wadi ad-Dawasir', 'واديالدواسر': 'Wadi ad-Dawasir', 'وادي الدواسر': 'Wadi ad-Dawasir',
+    'hafr al batin': 'Hafar Al-Batin', 'hafralbatin': 'Hafar Al-Batin', 'hafaralbatin': 'Hafar Al-Batin', 'حفرالباطن': 'Hafar Al-Batin', 'حفر الباطن': 'Hafar Al-Batin',
+    'khafji': 'Khafji', 'الخفجي': 'Khafji',
+    'arar': 'Arar', 'عرعر': 'Arar',
+    'sakaka': 'Sakaka', 'سكاكا': 'Sakaka',
+    'qurayyat': 'Al Qurayyat', 'alqurayyat': 'Al Qurayyat', 'al qurayyat': 'Al Qurayyat', 'القريات': 'Al Qurayyat',
+    'rafha': 'Rafha', 'رفحاء': 'Rafha', 'رفحا': 'Rafha',
+    'turaif': 'Turaif', 'طريف': 'Turaif',
+    'bisha': 'Bisha', 'بيشة': 'Bisha', 'بيشه': 'Bisha',
+    'albahah': 'Al Bahah', 'al bahah': 'Al Bahah', 'الباحة': 'Al Bahah', 'الباحه': 'Al Bahah',
+    'baljurashi': 'Baljurashi', 'بلجرشي': 'Baljurashi',
+    'qunfudhah': 'Al Qunfudhah', 'alqunfudhah': 'Al Qunfudhah', 'al qunfudhah': 'Al Qunfudhah', 'القنفذة': 'Al Qunfudhah', 'القنفذه': 'Al Qunfudhah',
+    'lith': 'Al Lith', 'allith': 'Al Lith', 'al lith': 'Al Lith', 'الليث': 'Al Lith',
+    'rabigh': 'Rabigh', 'رابغ': 'Rabigh',
+    'bahrah': 'Bahrah', 'بحرة': 'Bahrah', 'بحره': 'Bahrah',
+    'diriyah': 'Diriyah', ' الدرعية': 'Diriyah', 'الدرعية': 'Diriyah', 'الدرعيه': 'Diriyah',
+    'duba': 'Duba', 'ضباء': 'Duba', 'ضبا': 'Duba',
+    'umluj': 'Umluj', 'املج': 'Umluj', 'أملج': 'Umluj',
+    'alula': 'Al Ula', 'al ula': 'Al Ula', 'العلا': 'Al Ula',
   };
-  return map[value] || value;
+
+  const matched = cityMap[key] || cityMap[key.replace(/\s+/g, '')];
+  if (matched) return { input, city: matched, matched: true };
+
+  return { input, city: toTitleCase(input), matched: false };
+}
+
+function normalizeCityKey(value: string) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[إأآا]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .replace(/[ءؤئ]/g, '')
+    .replace(/[ـ]/g, '')
+    .replace(/[.,،؛:()\[\]{}]/g, ' ')
+    .replace(/\b(city|province|region|area|saudi arabia|ksa|sa)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function toTitleCase(value: string) {
+  return String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .split(' ')
+    .map((part) => part ? part.charAt(0).toUpperCase() + part.slice(1).toLowerCase() : part)
+    .join(' ');
+}
+
+function buildCityInfo(origin: NormalizedCity, destination: NormalizedCity) {
+  return {
+    origin: { input: origin.input, normalized: origin.city, matched: origin.matched },
+    destination: { input: destination.input, normalized: destination.city, matched: destination.matched },
+  };
 }
 
 function extractOtoMessage(data: any) {
