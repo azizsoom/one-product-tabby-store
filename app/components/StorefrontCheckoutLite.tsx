@@ -11,12 +11,15 @@ type Product = { id:string; name:string; description:string|null; price_before_v
 type CartItem = { product: Product; quantity: number };
 type DiscountCode = { code:string; type:'percentage'|'fixed'; value:number; max_discount_amount:number|null; is_active:boolean; usage_limit:number|null; used_count:number };
 type FlyItem = { id:number; fromX:number; fromY:number; toX:number; toY:number; emoji:string };
+type StoreSettings = { store_name:string; store_logo_url:string; store_city:string };
+const defaultSettings: StoreSettings = { store_name:'المتجر الإلكتروني', store_logo_url:'', store_city:'السعودية' };
 
 export default function StorefrontCheckoutLite() {
   const router = useRouter();
   const cartButtonRef = useRef<HTMLButtonElement|null>(null);
   const flyCounterRef = useRef(1);
   const [products,setProducts]=useState<Product[]>([]);
+  const [settings,setSettings]=useState<StoreSettings>(defaultSettings);
   const [cart,setCart]=useState<CartItem[]>([]);
   const [open,setOpen]=useState(false);
   const [search,setSearch]=useState('');
@@ -30,8 +33,19 @@ export default function StorefrontCheckoutLite() {
   const [discountMsg,setDiscountMsg]=useState('');
   const [flyItems,setFlyItems]=useState<FlyItem[]>([]);
 
-  useEffect(()=>{ db.from('products').select('*').eq('is_active',true).order('created_at',{ascending:false}).then(({data})=>setProducts((data||[]) as Product[])); },[]);
+  useEffect(()=>{ loadInitialData(); },[]);
   useEffect(()=>{ document.body.style.overflow=open?'hidden':''; return()=>{document.body.style.overflow=''};},[open]);
+
+  async function loadInitialData(){
+    const [{data:productRows},{data:settingRows}] = await Promise.all([
+      db.from('products').select('*').eq('is_active',true).order('created_at',{ascending:false}),
+      db.from('store_settings').select('key,value').in('key',['store_name','store_logo_url','store_city']),
+    ]);
+    setProducts((productRows||[]) as Product[]);
+    const nextSettings={...defaultSettings};
+    (settingRows||[]).forEach((row:any)=>{ if(row.key in nextSettings) nextSettings[row.key as keyof StoreSettings]=row.value||''; });
+    setSettings(nextSettings);
+  }
 
   const visible=useMemo(()=>{ const q=search.trim().toLowerCase(); return products.filter(p=>!q||String(p.name).toLowerCase().includes(q)||String(p.description||'').toLowerCase().includes(q)).sort((a,b)=> sortBy==='price_low'?Number(a.price_before_vat)-Number(b.price_before_vat):sortBy==='price_high'?Number(b.price_before_vat)-Number(a.price_before_vat):Number(b.stock_quantity||0)-Number(a.stock_quantity||0));},[products,search,sortBy]);
   const totals=useMemo(()=>calcTotals(cart,discount),[cart,discount]);
@@ -52,7 +66,7 @@ export default function StorefrontCheckoutLite() {
   function goShipping(){ setMsg(''); if(cart.length===0)return setMsg('السلة فارغة.'); if(!name.trim()||!mobile.trim()||!email.trim())return setMsg('أدخل الاسم والجوال والإيميل قبل المتابعة.'); if(!/^\S+@\S+\.\S+$/.test(email))return setMsg('صيغة الإيميل غير صحيحة.'); localStorage.setItem(CHECKOUT_DRAFT_KEY,JSON.stringify({items:cart,customerName:name.trim(),customerMobile:mobile.trim(),customerEmail:email.trim(),discountCode:discount?.code||'',appliedDiscount:discount,savedAt:new Date().toISOString()})); router.push('/checkout/shipping'); }
 
   return <main dir="rtl" className="min-h-screen bg-stone-50 text-stone-950">
-    <header className="sticky top-0 z-30 border-b bg-white/95 backdrop-blur"><div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-3 py-3 sm:px-4 lg:px-6"><h1 className="text-base font-black sm:text-xl lg:text-2xl">المتجر الإلكتروني</h1><button ref={cartButtonRef} onClick={()=>setOpen(true)} className="relative rounded-2xl bg-stone-950 px-4 py-3 text-sm font-bold text-white shadow-sm sm:px-6">السلة <span className="mr-1 rounded-full bg-emerald-500 px-2 py-0.5 text-xs">{qty}</span></button></div></header>
+    <header className="sticky top-0 z-30 border-b bg-white/95 backdrop-blur"><div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-3 py-3 sm:px-4 lg:px-6"><div className="flex min-w-0 items-center gap-3"><div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white ring-1 ring-stone-200 sm:h-14 sm:w-14">{settings.store_logo_url?<img src={settings.store_logo_url} alt={settings.store_name} className="h-full w-full object-contain p-1"/>:<span className="text-lg font-black text-stone-500">{settings.store_name.slice(0,1)}</span>}</div><div className="min-w-0"><h1 className="truncate text-base font-black sm:text-xl lg:text-2xl">{settings.store_name}</h1><p className="truncate text-xs text-stone-500 sm:text-sm">{settings.store_city} · دفع آمن عبر تابي</p></div></div><button ref={cartButtonRef} onClick={()=>setOpen(true)} className="relative shrink-0 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 sm:px-6">السلة <span className="mr-1 rounded-full bg-white px-2 py-0.5 text-xs text-emerald-700">{qty}</span></button></div></header>
     <section className="mx-auto max-w-7xl px-3 py-4 sm:px-4 lg:px-6 lg:py-8">
       <div className="mb-4 rounded-[1.5rem] bg-stone-950 p-4 text-white sm:rounded-[2rem] sm:p-6 lg:p-8"><h2 className="text-2xl font-black sm:text-3xl lg:text-5xl">اختر منتجاتك</h2><p className="mt-2 text-sm leading-6 text-stone-200 sm:text-base">بعد السلة تنتقل لصفحة العنوان الوطني وخيارات الشحن.</p></div>
       <div className="mb-4 grid gap-3 rounded-3xl bg-white p-3 ring-1 ring-stone-200 sm:p-4 md:grid-cols-[1fr_220px]"><input className="input" placeholder="بحث عن منتج" value={search} onChange={e=>setSearch(e.target.value)}/><select className="input" value={sortBy} onChange={e=>setSortBy(e.target.value)}><option value="newest">الأحدث</option><option value="price_low">الأقل سعر</option><option value="price_high">الأعلى سعر</option><option value="stock">الأكثر توفر</option></select></div>
