@@ -1,13 +1,13 @@
 export const appVersion = {
-  version: '1.2.3',
-  updateNumber: 23,
-  updatedAt: '2026-05-06',
-  title: 'تصحيح بناء OTO',
+  version: '1.2.4',
+  updateNumber: 24,
+  updatedAt: '2026-05-07',
+  title: 'تحسين توافق مدن OTO',
   backupBranch: 'backup-stable-store-tabby-cart-v1',
   changes: [
-    'تصحيح توافق API الشحن مع Vercel',
-    'تبسيط نتيجة Access Token',
-    'الحفاظ على رسائل خطأ OTO',
-    'تحديث رقم الإصدار',
+    'توحيد صيغة المدن العربية والإنجليزية قبل إرسالها إلى OTO',
+    'إضافة خريطة لأشهر مدن السعودية بصيغ OTO المناسبة',
+    'إرجاع بيانات المدينة الأصلية والمحوّلة داخل نتيجة API لتسهيل التشخيص',
+    'الحفاظ على سعر الشحن الاحتياطي عند فشل OTO',
   ],
 };
