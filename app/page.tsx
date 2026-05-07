@@ -1,5 +1,5 @@
-import StorefrontPage from './components/StorefrontPage';
+import StorefrontCheckoutLite from './components/StorefrontCheckoutLite';
 
 export default function Page() {
-  return <StorefrontPage />;
+  return <StorefrontCheckoutLite />;
 }
