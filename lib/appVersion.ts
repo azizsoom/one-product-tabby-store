@@ -1,13 +1,13 @@
 export const appVersion = {
-  version: '1.3.2',
-  updateNumber: 32,
+  version: '1.3.3',
+  updateNumber: 33,
   updatedAt: '2026-05-07',
-  title: 'إضافة خيار الدفع عبر Tamara',
+  title: 'تبديل رابط Tamara حسب وضع الربط',
   backupBranch: 'backup-stable-store-tabby-cart-v1',
   changes: [
-    'إضافة API لإنشاء رابط دفع Tamara',
-    'إضافة خيار Tamara بجانب Tabby في صفحة الشحن',
-    'إضافة إعدادات Tamara في لوحة التحكم',
-    'حفظ الطلبات المدفوعة عبر Tamara في جدول الطلبات بحالة pending',
+    'تغيير رابط Tamara تلقائيًا عند اختيار الوضع التجريبي',
+    'تغيير رابط Tamara تلقائيًا عند اختيار الوضع الفعلي',
+    'اعتماد وضع Tamara داخل API السيرفر عند إنشاء رابط الدفع',
+    'تقليل الحاجة لتعديل رابط API يدويًا من الإعدادات',
   ],
 };
