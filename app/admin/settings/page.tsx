@@ -19,6 +19,11 @@ const defaults: Record<string, string> = {
   tabby_merchant_code: 'kuredais',
   tabby_api_url: 'https://api.tabby.sa/api/v2/checkout',
   tabby_mode: 'test',
+  tamara_enabled: 'false',
+  tamara_api_token: '',
+  tamara_api_url: 'https://api-sandbox.tamara.co',
+  tamara_notification_token: '',
+  tamara_mode: 'test',
   oto_enabled: 'false',
   oto_refresh_token: '',
   oto_origin_city: 'Riyadh',
@@ -95,6 +100,18 @@ export default function SettingsPage() {
               <Field label="رابط API تابي" value={settings.tabby_api_url} onChange={(v) => setSettings({ ...settings, tabby_api_url: v })} placeholder="https://api.tabby.sa/api/v2/checkout" />
               <label><span className="mb-2 block text-sm font-bold text-stone-700">وضع الربط</span><select className="input" value={settings.tabby_mode} onChange={(e) => setSettings({ ...settings, tabby_mode: e.target.value })}><option value="test">تجريبي test</option><option value="live">فعلي live</option></select></label>
               <Field label="مفتاح تابي السري Secret Key" type="password" value={settings.tabby_secret_key} onChange={(v) => setSettings({ ...settings, tabby_secret_key: v })} placeholder="sk_test_..." />
+            </div>
+          </div>
+
+          <div className="mt-6 rounded-3xl bg-emerald-50 p-5 ring-1 ring-emerald-100">
+            <h2 className="text-xl font-black text-emerald-950">إعدادات الربط مع Tamara</h2>
+            <p className="mt-2 text-sm leading-6 text-emerald-800">ضع بيانات Tamara التجريبية أو الفعلية هنا. يفضل حفظ التوكن السري داخل Vercel عند التشغيل الفعلي.</p>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <label className="flex items-center gap-3 rounded-2xl bg-white p-4 ring-1 ring-emerald-100"><input type="checkbox" checked={settings.tamara_enabled === 'true'} onChange={(e) => setSettings({ ...settings, tamara_enabled: e.target.checked ? 'true' : 'false' })} /><span className="font-bold">تفعيل Tamara</span></label>
+              <label><span className="mb-2 block text-sm font-bold text-stone-700">وضع الربط</span><select className="input" value={settings.tamara_mode} onChange={(e) => setSettings({ ...settings, tamara_mode: e.target.value })}><option value="test">تجريبي test</option><option value="live">فعلي live</option></select></label>
+              <Field label="رابط API Tamara" value={settings.tamara_api_url} onChange={(v) => setSettings({ ...settings, tamara_api_url: v })} placeholder="https://api-sandbox.tamara.co" />
+              <Field label="Tamara API Token" type="password" value={settings.tamara_api_token} onChange={(v) => setSettings({ ...settings, tamara_api_token: v })} placeholder="ضع التوكن هنا" />
+              <Field label="Tamara Notification Token" type="password" value={settings.tamara_notification_token} onChange={(v) => setSettings({ ...settings, tamara_notification_token: v })} placeholder="اختياري للويب هوك" />
             </div>
           </div>
 
