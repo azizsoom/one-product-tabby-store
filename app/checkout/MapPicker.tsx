@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-type MapAddress = { city?: string; district?: string; street?: string; postalCode?: string; lat: number; lng: number };
+type MapAddress = { city?: string; district?: string; street?: string; postalCode?: string; buildingNumber?: string; lat: number; lng: number };
 
 type Props = {
   onChange: (address: MapAddress) => void;
@@ -55,7 +55,7 @@ export default function MapPicker({ onChange }: Props) {
     setMessage('جاري قراءة بيانات الموقع...');
     const address = await reverseGeocode(next.lat, next.lng);
     onChange({ ...address, ...next });
-    setMessage('تم تحديد الموقع. راجع بيانات العنوان قبل الدفع.');
+    setMessage('تم تعبئة بيانات العنوان المتاحة. أكمل العنوان المختصر من سبل إن لم يظهر.');
   }
 
   function locateMe() {
@@ -78,7 +78,7 @@ export default function MapPicker({ onChange }: Props) {
       <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 className="font-black">تحديد الموقع على الخريطة</h3>
-          <p className="mt-1 text-xs leading-5 text-stone-600">اضغط على الخريطة أو اسحب الدبوس. البيانات المعبأة من الخريطة للمساعدة فقط، والعنوان المختصر من سبل يبقى مهمًا.</p>
+          <p className="mt-1 text-xs leading-5 text-stone-600">اضغط على الخريطة أو اسحب الدبوس. نحاول تعبئة المدينة والحي والشارع والرمز البريدي ورقم المبنى إذا توفرت.</p>
         </div>
         <button type="button" onClick={locateMe} className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-black text-white">حدد موقعي الحالي</button>
       </div>
@@ -123,10 +123,11 @@ async function reverseGeocode(lat: number, lng: number) {
     const data = await res.json();
     const a = data?.address || {};
     return {
-      city: a.city || a.town || a.village || a.county || '',
-      district: a.suburb || a.neighbourhood || a.quarter || a.city_district || '',
-      street: a.road || a.pedestrian || '',
+      city: a.city || a.town || a.village || a.county || a.state || '',
+      district: a.suburb || a.neighbourhood || a.quarter || a.city_district || a.district || '',
+      street: a.road || a.pedestrian || a.residential || '',
       postalCode: a.postcode || '',
+      buildingNumber: a.house_number || '',
     };
   } catch {
     return {};
