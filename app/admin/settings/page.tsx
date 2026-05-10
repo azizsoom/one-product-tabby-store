@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { db } from '../../../lib/db';
 
 type Setting = { key: string; value: string };
+const TAMARA_TEST_URL = 'https://api-sandbox.tamara.co';
+const TAMARA_LIVE_URL = 'https://api.tamara.co';
 
 const defaults: Record<string, string> = {
   store_name: 'شركة المطارة',
@@ -21,7 +23,7 @@ const defaults: Record<string, string> = {
   tabby_mode: 'test',
   tamara_enabled: 'false',
   tamara_api_token: '',
-  tamara_api_url: 'https://api-sandbox.tamara.co',
+  tamara_api_url: TAMARA_TEST_URL,
   tamara_notification_token: '',
   tamara_mode: 'test',
   oto_enabled: 'false',
@@ -37,11 +39,20 @@ export default function SettingsPage() {
 
   useEffect(() => { loadSettings(); }, []);
 
+  function setTamaraMode(mode: string) {
+    setSettings({
+      ...settings,
+      tamara_mode: mode,
+      tamara_api_url: mode === 'live' ? TAMARA_LIVE_URL : TAMARA_TEST_URL,
+    });
+  }
+
   async function loadSettings() {
     const { data } = await db.from('store_settings').select('*');
     if (data) {
       const next = { ...defaults };
       (data as Setting[]).forEach((row) => { next[row.key] = row.value || ''; });
+      if (!next.tamara_api_url) next.tamara_api_url = next.tamara_mode === 'live' ? TAMARA_LIVE_URL : TAMARA_TEST_URL;
       setSettings(next);
     }
   }
@@ -105,11 +116,11 @@ export default function SettingsPage() {
 
           <div className="mt-6 rounded-3xl bg-emerald-50 p-5 ring-1 ring-emerald-100">
             <h2 className="text-xl font-black text-emerald-950">إعدادات الربط مع Tamara</h2>
-            <p className="mt-2 text-sm leading-6 text-emerald-800">ضع بيانات Tamara التجريبية أو الفعلية هنا. يفضل حفظ التوكن السري داخل Vercel عند التشغيل الفعلي.</p>
+            <p className="mt-2 text-sm leading-6 text-emerald-800">اختيار الوضع يغير رابط API تلقائيًا: تجريبي sandbox أو فعلي production.</p>
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <label className="flex items-center gap-3 rounded-2xl bg-white p-4 ring-1 ring-emerald-100"><input type="checkbox" checked={settings.tamara_enabled === 'true'} onChange={(e) => setSettings({ ...settings, tamara_enabled: e.target.checked ? 'true' : 'false' })} /><span className="font-bold">تفعيل Tamara</span></label>
-              <label><span className="mb-2 block text-sm font-bold text-stone-700">وضع الربط</span><select className="input" value={settings.tamara_mode} onChange={(e) => setSettings({ ...settings, tamara_mode: e.target.value })}><option value="test">تجريبي test</option><option value="live">فعلي live</option></select></label>
-              <Field label="رابط API Tamara" value={settings.tamara_api_url} onChange={(v) => setSettings({ ...settings, tamara_api_url: v })} placeholder="https://api-sandbox.tamara.co" />
+              <label><span className="mb-2 block text-sm font-bold text-stone-700">وضع الربط</span><select className="input" value={settings.tamara_mode} onChange={(e) => setTamaraMode(e.target.value)}><option value="test">تجريبي test</option><option value="live">فعلي live</option></select></label>
+              <Field label="رابط API Tamara يتغير تلقائيًا" value={settings.tamara_api_url} onChange={(v) => setSettings({ ...settings, tamara_api_url: v })} placeholder={TAMARA_TEST_URL} />
               <Field label="Tamara API Token" type="password" value={settings.tamara_api_token} onChange={(v) => setSettings({ ...settings, tamara_api_token: v })} placeholder="ضع التوكن هنا" />
               <Field label="Tamara Notification Token" type="password" value={settings.tamara_notification_token} onChange={(v) => setSettings({ ...settings, tamara_notification_token: v })} placeholder="اختياري للويب هوك" />
             </div>
