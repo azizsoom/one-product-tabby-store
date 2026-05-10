@@ -7,6 +7,8 @@ const fallbackTamaraToken = process.env.TAMARA_API_TOKEN || '';
 const fallbackTamaraApiUrl = process.env.TAMARA_API_URL || 'https://api-sandbox.tamara.co';
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://one-product-tabby-store.vercel.app';
 const db = createClient(supabaseUrl, supabaseKey);
+const TAMARA_TEST_URL = 'https://api-sandbox.tamara.co';
+const TAMARA_LIVE_URL = 'https://api.tamara.co';
 
 type RequestedItem = { productId: string; quantity: number };
 type StoreSettings = Record<string, string>;
@@ -18,7 +20,7 @@ export async function POST(request: NextRequest) {
     const settings = await getStoreSettings();
     const enabled = (settings.tamara_enabled || process.env.TAMARA_ENABLED || 'false') === 'true';
     const token = settings.tamara_api_token || fallbackTamaraToken;
-    const baseUrl = (settings.tamara_api_url || fallbackTamaraApiUrl).replace(/\/$/, '');
+    const baseUrl = resolveTamaraBaseUrl(settings).replace(/\/$/, '');
     if (!enabled) return NextResponse.json({ error: 'تمارا غير مفعلة من إعدادات المتجر.' }, { status: 400 });
     if (!token) return NextResponse.json({ error: 'مفتاح Tamara API غير موجود في الإعدادات أو Vercel.' }, { status: 500 });
 
@@ -81,6 +83,8 @@ export async function POST(request: NextRequest) {
       shipping_company: selectedOption?.company || null,
       admin_notes: JSON.stringify({
         provider: 'tamara',
+        mode: settings.tamara_mode || 'test',
+        api_url: baseUrl,
         cart_items: cartItems.map((item) => ({ product_id: item.product.id, name: item.product.name, quantity: item.quantity, unit_price_before_vat: Number(item.product.price_before_vat || 0) })),
         shipping_info: { fulfillment_type: fulfillmentType, city: shippingInfo.city || '', city_label: shippingInfo.cityLabel || '', district: shippingInfo.district || '', address: shippingInfo.address || '', short_address: shippingInfo.shortAddress || '', building_number: shippingInfo.buildingNumber || '', street: shippingInfo.street || '', postal_code: shippingInfo.postalCode || '', additional_number: shippingInfo.additionalNumber || '', notes: shippingInfo.notes || '', selected_option: selectedOption },
         discount: discount ? { code: discount.code, type: discount.type, value: discount.value } : null,
@@ -134,7 +138,7 @@ export async function POST(request: NextRequest) {
     const tamaraOrderId = tamaraData?.order_id || null;
     const tamaraCheckoutId = tamaraData?.checkout_id || null;
     const webUrl = tamaraData?.checkout_url || tamaraData?.web_url || tamaraData?.redirect_url;
-    await db.from('orders').update({ admin_notes: JSON.stringify({ provider: 'tamara', tamara_order_id: tamaraOrderId, tamara_checkout_id: tamaraCheckoutId, tamara_status: tamaraData?.status || '', original_admin_notes: order.admin_notes }) }).eq('id', order.id);
+    await db.from('orders').update({ admin_notes: JSON.stringify({ provider: 'tamara', tamara_order_id: tamaraOrderId, tamara_checkout_id: tamaraCheckoutId, tamara_status: tamaraData?.status || '', tamara_api_url: baseUrl, original_admin_notes: order.admin_notes }) }).eq('id', order.id);
 
     if (!webUrl) return NextResponse.json({ error: 'Tamara did not return checkout_url.', details: tamaraData }, { status: 500 });
     return NextResponse.json({ webUrl, orderId: order.id, tamaraOrderId, tamaraCheckoutId });
@@ -143,6 +147,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
+function resolveTamaraBaseUrl(settings: StoreSettings) { if (settings.tamara_mode === 'live') return TAMARA_LIVE_URL; if (settings.tamara_mode === 'test') return TAMARA_TEST_URL; return settings.tamara_api_url || fallbackTamaraApiUrl; }
 async function getStoreSettings(): Promise<StoreSettings> { const { data } = await db.from('store_settings').select('key,value'); const settings: StoreSettings = {}; (data || []).forEach((row: any) => { settings[row.key] = row.value || ''; }); return settings; }
 async function getValidDiscount(code: string, subtotal: number): Promise<DiscountCode | null> { const { data } = await db.from('discount_codes').select('*').eq('code', code).single(); const discount = data as DiscountCode | null; if (!discount || !discount.is_active) return null; if (discount.usage_limit !== null && Number(discount.used_count || 0) >= Number(discount.usage_limit)) return null; if (Number(discount.value || 0) <= 0 || subtotal <= 0) return null; return discount; }
 function calculateCartOrder(cartItems: Array<{ product: any; quantity: number }>, discount: DiscountCode | null, fulfillmentType: 'shipping' | 'pickup', selectedShippingAmount: number | null) { const subtotalBeforeDiscount = roundMoney(cartItems.reduce((sum, item) => sum + Number(item.product.price_before_vat || 0) * item.quantity, 0)); const rawDiscount = discount ? (discount.type === 'percentage' ? subtotalBeforeDiscount * (Number(discount.value || 0) / 100) : Number(discount.value || 0)) : 0; const cappedDiscount = discount?.max_discount_amount ? Math.min(rawDiscount, Number(discount.max_discount_amount)) : rawDiscount; const discountAmount = roundMoney(Math.min(subtotalBeforeDiscount, Math.max(0, cappedDiscount))); const taxableAmount = roundMoney(subtotalBeforeDiscount - discountAmount); const vatAmount = roundMoney(taxableAmount * 0.15); const fallbackShipping = roundMoney(cartItems.length === 0 ? 0 : Math.max(...cartItems.map((item) => Number(item.product.shipping_amount || 0)))); const shippingAmount = fulfillmentType === 'pickup' ? 0 : roundMoney(selectedShippingAmount !== null ? selectedShippingAmount : fallbackShipping); const totalAmount = roundMoney(taxableAmount + vatAmount + shippingAmount); return { subtotalBeforeDiscount, discountAmount, taxableAmount, vatAmount, shippingAmount, totalAmount }; }
